@@ -7,6 +7,7 @@ import { router as characterRouter } from './routes/characters.js';
 import { router as sessionRouter } from './routes/sessions.js';
 import { router as convoRouter } from './routes/convo.js';
 import { stripSensitiveHeaders } from './middleware/stripHeaders.js';
+import { router as exportRouter } from './routes/exports.js';
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
@@ -31,6 +32,7 @@ app.use('/uploads', express.static(path.resolve(UPLOADS_DIR)));
 app.use('/api/characters', characterRouter);
 app.use('/api/sessions', sessionRouter);
 app.use('/api/convo', convoRouter);
+app.use('/api/exports', exportRouter);
 
 // Asset upload (avatars)
 const upload = multer({ limits: { fileSize: 5 * 1024 * 1024 } });
@@ -53,4 +55,3 @@ const port = Number(process.env.PORT || 4000);
 app.listen(port, () => {
   console.log('Server listening on', port);
 });
-

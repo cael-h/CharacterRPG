@@ -23,6 +23,9 @@ Later on 2025-08-31
 - Added slash command parsing server-side; records `/LLM`, `/<NPCName>`, and `/scene` in `turns.meta_json`.
 - Hooked up Timeline Manager; NPC replies create simple per-character events; `/scene` notes add global events.
 - Client sources scaffolded: Zustand store and Conversation screen with left/right bubbles and avatar placeholder.
+ - Server export endpoints: `/api/exports/transcripts/:sessionId`, `/api/exports/memories/:characterId`, `/api/exports/timelines/:ownerId` (use `global` for global timeline).
+ - Usage logger: rough token estimation written to `usage/<sessionId>.jsonl` for each turn (player/NPC).
+ - RN app shell and screens: `App.tsx`, `src/screens/Characters.tsx`, `src/screens/Settings.tsx` created (offline-friendly sources).
 
 Notes for resumption
 - Server uses mock LLM now; responses are deterministic and safe for UI bring-up.

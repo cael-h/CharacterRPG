@@ -7,6 +7,7 @@ import { extractAndStoreMemories } from '../services/memory.js';
 import { snapshotTurn } from '../services/snapshot.js';
 import { parseMessage } from '../services/commands.js';
 import { addEvent } from '../services/timeline.js';
+import { recordUsage } from '../services/usage.js';
 
 export const router = Router();
 
@@ -21,7 +22,9 @@ router.post('/turn', async (req, res) => {
   const playerTurnId = uuid();
   db.prepare('INSERT INTO turns VALUES (?,?,?,?,?,?,?,?)')
     .run(playerTurnId, session_id, 'player', 'player', parsed.remainder || player_text, null, Date.now(), JSON.stringify({ commands: parsed.commands }));
-  appendTranscript(session_id, `player: ${parsed.remainder || player_text}`);
+  const playerFinal = parsed.remainder || player_text;
+  appendTranscript(session_id, `player: ${playerFinal}`);
+  recordUsage(session_id, provider ?? 'mock', 'player', playerFinal);
 
   // Apply scene command (if any) — naive append to setting manager later
   for (const c of parsed.commands) {
@@ -39,6 +42,7 @@ router.post('/turn', async (req, res) => {
     db.prepare('INSERT INTO turns VALUES (?,?,?,?,?,?,?,?)')
       .run(id, session_id, 'npc', t.speaker, t.text, null, Date.now(), JSON.stringify({ emotion: t.emotion ?? null }));
     appendTranscript(session_id, `${t.speaker}: ${t.text}`);
+    recordUsage(session_id, provider ?? 'mock', 'npc', t.text);
     out.push({ speaker: t.speaker, text: t.text, speak: t.speak !== false });
   }
 
