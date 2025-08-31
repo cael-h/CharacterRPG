@@ -16,9 +16,13 @@ This file tracks progress, choices, and reminders so work can resume with fresh 
 Blocked / To do next
 - npm install and run server (blocked by network; ready once allowed).
 - Implement real provider adapters (OpenAI/Gemini) respecting transient BYOK headers.
-- Add slash command parsing server-side; structure `/LLM`, `/<NPCName>`, `/scene`.
-- Append timeline events (service stub to call from convo route after memory extraction).
 - Implement avatars in client UI; add BYOK settings screen and usage tracker store.
+- Usage tracker counters and cost estimates in client; server echo of token counts later.
+
+Later on 2025-08-31
+- Added slash command parsing server-side; records `/LLM`, `/<NPCName>`, and `/scene` in `turns.meta_json`.
+- Hooked up Timeline Manager; NPC replies create simple per-character events; `/scene` notes add global events.
+- Client sources scaffolded: Zustand store and Conversation screen with left/right bubbles and avatar placeholder.
 
 Notes for resumption
 - Server uses mock LLM now; responses are deterministic and safe for UI bring-up.
@@ -26,4 +30,3 @@ Notes for resumption
 - When enabling installs, run from `server/`:
   - `cp .env.example .env` (adjust paths if needed)
   - `npm i && npm run dev`
-
