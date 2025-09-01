@@ -125,3 +125,7 @@ Source: Derived from the architecture doc and transcript.
 - Context: You want stories to flow without artificial blocks, but safely.
 - Decision: Add a user setting that relaxes language constraints in the system prompt while explicitly disallowing illegal sexual content and any content involving minors.
 - Consequences: Clear user control; prompt-level guardrails; can be tightened per scene if desired.
+## D26: Prompt Tweaker
+- Context: You want the app to help keep stories within legal boundaries without harsh stops.
+- Decision: Add a Prompt Tweaker with modes: off, suggest, auto. It can propose safer phrasings or rewrite the user’s input; explicit sexual content involving minors is always blocked.
+- Consequences: Better UX than hard refusals; uses lightweight heuristics now, can plug in a proper classifier later.

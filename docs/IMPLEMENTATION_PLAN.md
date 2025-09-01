@@ -108,3 +108,7 @@ Acceptance
 - Client: `react-native`, audio playback/capture modules (to be selected during implementation).
 - Keys: keep in server `.env`; client references server only.
  - For BYOK-only: server `.env` contains no provider keys in production; developer may set for local testing but app ignores when a user key is present.
+### 3e) Prompt Tweaker
+- Add UI control in Settings for modes: off, suggest, auto.
+- Server: run `tweakUserText` before LLM; in suggest mode prepend a System hint; in auto mode rewrite; block prohibited minors content.
+- Later: replace heuristic with a small safety model or provider moderation endpoint.
