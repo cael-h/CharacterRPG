@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "ts-node-dev --respawn src/index.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "test": "tsc -p tsconfig.json && node dist/tests/basic.js"
   },
   "dependencies": {
     "better-sqlite3": "^9.4.0",
@@ -20,4 +21,3 @@
     "typescript": "^5.4.5"
   }
 }
-

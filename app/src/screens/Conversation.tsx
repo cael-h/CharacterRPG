@@ -3,19 +3,24 @@ import { View, Text, TextInput, Button, Image } from 'react-native';
 import { useStore } from '../store/useStore';
 
 export default function Conversation() {
-  const { apiBase, provider, model, sessionId, characters, turns, set, pushTurn } = useStore();
+  const { apiBase, provider, model, sessionId, characters, selected, turns, set, pushTurn, startSession, incUsage } = useStore();
   const [text, setText] = useState('');
 
   const send = async () => {
     if (!text.trim()) return;
+    if (!sessionId) await startSession();
     pushTurn({ role: 'player', speaker: 'player', text });
     try {
       const r = await fetch(`${apiBase}/api/convo/turn`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, player_text: text, scene_context: {}, characters: characters.map(c=>({name:c.name, system_prompt:c.system_prompt||''})), provider })
+        body: JSON.stringify({ session_id: sessionId, player_text: text, scene_context: {}, characters: characters.filter(c=>selected.includes(c.id)).map(c=>({name:c.name, system_prompt:c.system_prompt||''})), provider })
       }).then(r=>r.json());
-      r.turns?.forEach((t:any)=> pushTurn({ role: 'npc', speaker: t.speaker, text: t.text }));
+      incUsage(model, 'in', Math.max(1, Math.round(text.length/4)));
+      r.turns?.forEach((t:any)=> {
+        pushTurn({ role: 'npc', speaker: t.speaker, text: t.text });
+        incUsage(model, 'out', Math.max(1, Math.round(String(t.text).length/4)));
+      });
     } catch (e) {
       pushTurn({ role: 'npc', speaker: 'System', text: `Error: ${String(e)}` });
     }
@@ -56,4 +61,3 @@ export default function Conversation() {
     </View>
   );
 }
-

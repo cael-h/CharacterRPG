@@ -10,4 +10,3 @@ export function updateSetting(sessionId: string, delta: any) {
   const id = uuid();
   db.prepare('INSERT INTO scene_state VALUES (?,?,?,?)').run(id, sessionId, JSON.stringify(next), now);
 }
-

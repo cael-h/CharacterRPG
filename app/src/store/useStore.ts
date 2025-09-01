@@ -5,9 +5,8 @@ type Model = 'gemini-2.5-flash' | 'gemini-2.5-flash-lite' | 'gpt5-mini' | 'gpt5'
 
 type Turn = { role: 'player'|'npc'; speaker: string; text: string };
 
-type Usage = {
-  byModel: Record<string, { requests: number; inTokens: number; outTokens: number; state: 'free'|'near'|'limited'|'over'|'paid' }>
-};
+type UsageCounters = { requests: number; inTokens: number; outTokens: number; state: 'free'|'near'|'limited'|'over'|'paid' };
+type Usage = { byModel: Record<string, UsageCounters> };
 
 type State = {
   apiBase: string;
@@ -17,10 +16,13 @@ type State = {
   geminiKey?: string;
   sessionId?: string;
   characters: { id: string; name: string; avatar_uri?: string; system_prompt?: string }[];
+  selected: string[];
   turns: Turn[];
   usage: Usage;
   set: (p: Partial<State>) => void;
   pushTurn: (t: Turn) => void;
+  startSession: () => Promise<void>;
+  incUsage: (model: string, kind: 'in'|'out', tokens: number) => void;
 };
 
 export const useStore = create<State>((set, get) => ({
@@ -28,9 +30,22 @@ export const useStore = create<State>((set, get) => ({
   provider: 'gemini',
   model: 'gemini-2.5-flash',
   characters: [],
+  selected: [],
   turns: [],
   usage: { byModel: {} },
   set: (p) => set(p),
-  pushTurn: (t) => set({ turns: [...get().turns, t] })
+  pushTurn: (t) => set({ turns: [...get().turns, t] }),
+  startSession: async () => {
+    if (get().sessionId) return;
+    const { apiBase, provider, selected } = get();
+    const participants = selected.map(id => ({ id }));
+    const r = await fetch(`${apiBase}/api/sessions`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ title: 'Scene', provider, participants }) }).then(r=>r.json());
+    set({ sessionId: r.id });
+  },
+  incUsage: (model, kind, tokens) => {
+    const u = { ...(get().usage.byModel[model] || { requests:0, inTokens:0, outTokens:0, state:'free' as const }) };
+    u.requests += kind==='in'?1:0;
+    if (kind==='in') u.inTokens += tokens; else u.outTokens += tokens;
+    set({ usage: { byModel: { ...get().usage.byModel, [model]: u } } });
+  }
 }));
-

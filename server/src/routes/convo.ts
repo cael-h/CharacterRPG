@@ -7,6 +7,7 @@ import { extractAndStoreMemories } from '../services/memory.js';
 import { snapshotTurn } from '../services/snapshot.js';
 import { parseMessage } from '../services/commands.js';
 import { addEvent } from '../services/timeline.js';
+import { updateSetting } from '../services/setting.js';
 import { recordUsage } from '../services/usage.js';
 
 export const router = Router();
@@ -30,6 +31,7 @@ router.post('/turn', async (req, res) => {
   for (const c of parsed.commands) {
     if (c.kind === 'scene') {
       addEvent({ scope: 'global', ownerId: null, title: 'Scene note', summary: c.text, sources: { session_id } });
+      try { updateSetting(session_id, { note: c.text }); } catch {}
     }
   }
 
