@@ -28,6 +28,7 @@ type State = {
   usage: Usage;
   mature: boolean;
   customOllamaModel?: string;
+  tweakMode: 'off'|'suggest'|'auto';
   set: (p: Partial<State>) => void;
   pushTurn: (t: Turn) => void;
   startSession: () => Promise<void>;
@@ -43,6 +44,7 @@ export const useStore = create<State>((set, get) => ({
   turns: [],
   usage: { byModel: {} },
   mature: false,
+  tweakMode: 'off',
   set: (p) => set(p),
   pushTurn: (t) => set({ turns: [...get().turns, t] }),
   startSession: async () => {

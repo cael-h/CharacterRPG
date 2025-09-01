@@ -40,6 +40,10 @@ Source: Extracted from `docs/Conversations_with_GPT/rpg-voice-app-architecture-a
 ### Content mode
 - Mature mode toggle: when enabled, allow in‑character mature language; still prohibit illegal sexual content and minors. Default off.
 
+### Prompt Tweaker
+- Modes: `off` | `suggest` | `auto`.
+- Behavior: detect obviously illegal requests; either suggest a safer reframe (`suggest`) or automatically rewrite to a lawful alternative (`auto`). Always block any sexual content involving minors.
+
 ## Non-Functional
 - Low-latency but predictable conversational rhythm (orchestrated path favored initially).
 - Reliability over novelty for MVP; realtime kept optional to avoid hard-cut overlaps.

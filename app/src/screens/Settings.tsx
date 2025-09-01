@@ -3,12 +3,13 @@ import { View, Text, TextInput, Button, Switch } from 'react-native';
 import { useStore, modelToOllamaId } from '../store/useStore';
 
 export default function Settings() {
-  const { provider, model, mature, customOllamaModel, set } = useStore();
+  const { provider, model, mature, customOllamaModel, tweakMode, set } = useStore();
   const [prov, setProv] = useState(provider);
   const [mdl, setMdl] = useState(model);
   const [autoSwitch, setAutoSwitch] = useState(true);
   const [matureLang, setMatureLang] = useState(mature);
   const [customModel, setCustomModel] = useState(customOllamaModel || '');
+  const [tweak, setTweak] = useState<'off'|'suggest'|'auto'>(tweakMode);
 
   return (
     <View style={{flex:1, padding:12}}>
@@ -52,7 +53,17 @@ export default function Settings() {
         <Text style={{marginLeft:8}}>Mature language (in-character)</Text>
       </View>
       <View style={{marginTop:12}}>
-        <Button title="Save" onPress={()=> set({ provider: prov as any, model: mdl as any, mature: matureLang, customOllamaModel: customModel }) } />
+        <Text style={{fontWeight:'600'}}>Prompt Tweaker</Text>
+        <View style={{flexDirection:'row', marginTop:6}}>
+          <Button title={`Off${tweak==='off'?' ✓':''}`} onPress={()=>setTweak('off')} />
+          <View style={{width:8}} />
+          <Button title={`Suggest${tweak==='suggest'?' ✓':''}`} onPress={()=>setTweak('suggest')} />
+          <View style={{width:8}} />
+          <Button title={`Auto-rewrite${tweak==='auto'?' ✓':''}`} onPress={()=>setTweak('auto')} />
+        </View>
+      </View>
+      <View style={{marginTop:12}}>
+        <Button title="Save" onPress={()=> set({ provider: prov as any, model: mdl as any, mature: matureLang, customOllamaModel: customModel, tweakMode: tweak }) } />
       </View>
     </View>
   );
