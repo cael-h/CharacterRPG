@@ -8,6 +8,7 @@ Source: Extracted from `docs/Conversations_with_GPT/rpg-voice-app-architecture-a
 - Provider toggle: OpenAI or Gemini with a simple switch; provider-agnostic abstractions. BYOK‑only: users must supply their own API keys.
 - Multi-character scenes: single LLM produces structured JSON turns `{speaker, text, speak}`; per-speaker TTS.
 - Character profiles: name, voice, provider, system prompt, memory; persisted on server; selectable per scene.
+- Character ages: store `age` per character; used for maturity checks and included in LLM context.
 - Avatars: user can set an image for each NPC character and an optional player avatar; avatars appear next to NPC messages in the transcript/chat (bubble-style). Voice sessions are recorded in the same transcript with speaker labels. Chat layout: NPC messages left‑aligned with a small circular avatar and a name prefix (e.g., "Olive: …"); player messages right‑aligned. Background image behavior is off by default with an option for `activeSpeaker` later.
 - Transcripts: persist all turns (player/NPC) per session; exportable.
 - Transcript files: in addition to DB, write an append-only verbatim transcript per session under `transcripts/<sessionId>.md`.

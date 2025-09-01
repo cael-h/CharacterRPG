@@ -13,7 +13,8 @@ type Args = {
 };
 
 const systemHeader = (chars: Character[], mature?: boolean) => {
-  const base = `You are running a scene. Characters: ${chars.map(c=>c.name).join(', ')}.`;
+  const withAges = chars.map(c => c.name + (c as any).age ? ` (${(c as any).age})` : '').join(', ');
+  const base = `You are running a scene. Characters: ${withAges || chars.map(c=>c.name).join(', ')}.`;
   const jsonRule = `Output ONLY strict JSON of shape {"turns":[{"speaker":"<one>","text":"...","speak":true,"emotion":"neutral"}]}. Keep each turn ≤ 2 sentences.`;
   const matureNote = mature
     ? `You may use mature language if in-character. Do not include sexual content involving minors. Avoid illegal content.`
