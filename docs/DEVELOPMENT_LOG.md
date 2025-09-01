@@ -23,12 +23,18 @@ Later on 2025-08-31
 - Added slash command parsing server-side; records `/LLM`, `/<NPCName>`, and `/scene` in `turns.meta_json`.
 - Hooked up Timeline Manager; NPC replies create simple per-character events; `/scene` notes add global events.
 - Client sources scaffolded: Zustand store and Conversation screen with left/right bubbles and avatar placeholder.
- - Server export endpoints: `/api/exports/transcripts/:sessionId`, `/api/exports/memories/:characterId`, `/api/exports/timelines/:ownerId` (use `global` for global timeline).
- - Usage logger: rough token estimation written to `usage/<sessionId>.jsonl` for each turn (player/NPC).
+- Server export endpoints: `/api/exports/transcripts/:sessionId`, `/api/exports/memories/:characterId`, `/api/exports/timelines/:ownerId` (use `global` for global timeline).
+- Usage logger: rough token estimation written to `usage/<sessionId>.jsonl` for each turn (player/NPC).
 - RN app shell and screens: `App.tsx`, `src/screens/Characters.tsx`, `src/screens/Settings.tsx` created (offline-friendly sources).
 - Client: Conversation now starts a session automatically if missing and tracks rough token usage locally per model.
 - Client: Characters screen supports selecting participants for the scene.
 - Server: added a minimal test file (`src/tests/basic.ts`) and a `npm test` script that compiles and runs it without extra deps.
+
+Dependency hygiene
+- Replaced `ts-node-dev` with `tsx` for the dev runner to avoid deprecated transitive deps (`glob@7`, `rimraf@2`, `inflight`).
+- Upgraded `multer` from `1.x` to `^2.0.0` (our usage remains compatible: `upload.single('file')`).
+- Removed `node-fetch` (we will use Node 18’s global `fetch` when implementing real providers) to avoid `node-domexception` warnings.
+- After these changes, `npm i` should show fewer deprecation warnings.
 
 Notes for resumption
 - Server uses mock LLM now; responses are deterministic and safe for UI bring-up.
