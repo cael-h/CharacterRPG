@@ -1,0 +1,1 @@
+- [2025-09-01T17:17:15.235Z] Scene note — We move to the kitchen
