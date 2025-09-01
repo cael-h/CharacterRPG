@@ -34,7 +34,8 @@ Later on 2025-08-31
 - Server: added local OSS adapter `provider=ollama` (env: `OLLAMA_BASE`, `OLLAMA_MODEL`).
 - Client: settings now include provider=Ollama with presets (Qwen2.5 7B, Llama 3.1 8B, Hermes RP 8B) and a custom model field.
 - Client: mature language toggle plumbed through to server; prompt adjusted accordingly.
- - Prompt Tweaker: settings with off/suggest/auto; server pre-processes user text (heuristic), blocks minors sexual content, suggests or rewrites otherwise.
+- Prompt Tweaker: settings with off/suggest/auto; server pre-processes user text (heuristic), blocks minors sexual content, suggests or rewrites otherwise.
+ - Characters UI: added optional Age field (sent to server; included in LLM context and used by tweaker).
 
 Dependency hygiene
 - Replaced `ts-node-dev` with `tsx` for the dev runner to avoid deprecated transitive deps (`glob@7`, `rimraf@2`, `inflight`).
