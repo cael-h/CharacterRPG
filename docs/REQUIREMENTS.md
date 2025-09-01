@@ -26,6 +26,7 @@ Source: Extracted from `docs/Conversations_with_GPT/rpg-voice-app-architecture-a
 
 ### Provider/Model selection & usage controls (new)
 - Default provider: Gemini. Default model: `gemini-2.5-flash`. Alternative: `gemini-2.5-flash-lite` (quick switch).
+- Local OSS option: `provider=ollama` with presets for Qwen2.5‑7B‑Instruct, Llama‑3.1‑8B‑Instruct, Roleplay‑Hermes‑3 (Llama‑3.1‑8B), and a custom model input.
 - UI: clear indicator of active provider/model; one-tap toggle between available models.
 - Free vs paid state per model: show badge/state (Free OK / Rate-limited / Over free cap / Paid).
 - Usage metering: running counts of tokens/requests for each model, daily/monthly windows; estimate remaining free usage where applicable.
@@ -35,6 +36,9 @@ Source: Extracted from `docs/Conversations_with_GPT/rpg-voice-app-architecture-a
   - Continue on the same model as paid (explicit consent required).
 - Rate-limit handling: surface cooldown timers and next reset estimate; allow user to wait or switch.
 - OpenAI: always “paid”; still selectable, with running cost estimate.
+
+### Content mode
+- Mature mode toggle: when enabled, allow in‑character mature language; still prohibit illegal sexual content and minors. Default off.
 
 ## Non-Functional
 - Low-latency but predictable conversational rhythm (orchestrated path favored initially).

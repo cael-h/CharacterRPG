@@ -13,7 +13,7 @@ import { recordUsage } from '../services/usage.js';
 export const router = Router();
 
 router.post('/turn', async (req, res) => {
-  const { session_id, player_text, scene_context, characters, provider } = req.body || {};
+  const { session_id, player_text, scene_context, characters, provider, model, mature } = req.body || {};
   if (!session_id || !player_text || !characters) return res.status(400).json({ error: 'bad_request' });
 
   // Parse slash commands
@@ -36,7 +36,7 @@ router.post('/turn', async (req, res) => {
   }
 
   // Call LLM (mock by default in this environment)
-  const npc = await llmTurn({ provider: provider ?? 'mock', scene_context, characters, player_text: parsed.remainder || player_text, providerKey: (req as any).providerKey });
+  const npc = await llmTurn({ provider: provider ?? 'mock', scene_context, characters, player_text: parsed.remainder || player_text, providerKey: (req as any).providerKey, model, mature });
 
   const out: any[] = [];
   for (const t of npc.turns) {

@@ -120,3 +120,8 @@ Source: Derived from the architecture doc and transcript.
 - Context: You asked for a private, no-sharing option for initial builds.
 - Decision: Support a local provider via Ollama with a simple adapter; default to `llama3.1:8b-instruct` (configurable).
 - Consequences: Zero external data egress when used; JSON enforcement handled by prompt + fallback.
+
+## D25: Mature language toggle
+- Context: You want stories to flow without artificial blocks, but safely.
+- Decision: Add a user setting that relaxes language constraints in the system prompt while explicitly disallowing illegal sexual content and any content involving minors.
+- Consequences: Clear user control; prompt-level guardrails; can be tightened per scene if desired.

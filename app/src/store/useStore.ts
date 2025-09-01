@@ -1,7 +1,14 @@
 import { create } from 'zustand';
 
-type Provider = 'gemini' | 'openai' | 'mock';
-type Model = 'gemini-2.5-flash' | 'gemini-2.5-flash-lite' | 'gpt5-mini' | 'gpt5' | 'mock';
+type Provider = 'gemini' | 'openai' | 'ollama' | 'mock';
+type Model =
+  | 'gemini-2.5-flash'
+  | 'gemini-2.5-flash-lite'
+  | 'ollama-qwen2.5-7b-instruct'
+  | 'ollama-llama3.1-8b-instruct'
+  | 'ollama-roleplay-hermes-3-llama-3.1-8b'
+  | 'phi-3.5-mini'
+  | 'mock';
 
 type Turn = { role: 'player'|'npc'; speaker: string; text: string };
 
@@ -19,6 +26,8 @@ type State = {
   selected: string[];
   turns: Turn[];
   usage: Usage;
+  mature: boolean;
+  customOllamaModel?: string;
   set: (p: Partial<State>) => void;
   pushTurn: (t: Turn) => void;
   startSession: () => Promise<void>;
@@ -33,6 +42,7 @@ export const useStore = create<State>((set, get) => ({
   selected: [],
   turns: [],
   usage: { byModel: {} },
+  mature: false,
   set: (p) => set(p),
   pushTurn: (t) => set({ turns: [...get().turns, t] }),
   startSession: async () => {
@@ -49,3 +59,11 @@ export const useStore = create<State>((set, get) => ({
     set({ usage: { byModel: { ...get().usage.byModel, [model]: u } } });
   }
 }));
+
+export function modelToOllamaId(model: Model, custom?: string) {
+  if (model === 'ollama-qwen2.5-7b-instruct') return 'qwen2.5:7b-instruct';
+  if (model === 'ollama-llama3.1-8b-instruct') return 'llama3.1:8b-instruct';
+  if (model === 'ollama-roleplay-hermes-3-llama-3.1-8b') return 'roleplay-hermes-3-llama-3.1-8b';
+  if (custom) return custom;
+  return undefined;
+}
