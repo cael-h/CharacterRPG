@@ -9,6 +9,7 @@ Source: Extracted from `docs/Conversations_with_GPT/rpg-voice-app-architecture-a
 - Multi-character scenes: single LLM produces structured JSON turns `{speaker, text, speak}`; per-speaker TTS.
 - Character profiles: name, voice, provider, system prompt, memory; persisted on server; selectable per scene.
 - Character ages: store `age` per character; used for maturity checks and included in LLM context.
+- Character birth year: store `birth_year`; when scene time changes (flashbacks/forwards), compute age from `birth_year` and the narrative time. Include computed age in LLM context.
 - Avatars: user can set an image for each NPC character and an optional player avatar; avatars appear next to NPC messages in the transcript/chat (bubble-style). Voice sessions are recorded in the same transcript with speaker labels. Chat layout: NPC messages left‑aligned with a small circular avatar and a name prefix (e.g., "Olive: …"); player messages right‑aligned. Background image behavior is off by default with an option for `activeSpeaker` later.
 - Transcripts: persist all turns (player/NPC) per session; exportable.
 - Transcript files: in addition to DB, write an append-only verbatim transcript per session under `transcripts/<sessionId>.md`.
@@ -20,6 +21,7 @@ Source: Extracted from `docs/Conversations_with_GPT/rpg-voice-app-architecture-a
 ### Memory, Setting, Commands, and Control (new)
 - Per-NPC memories: maintain a concise, structured memory file for each NPC (e.g., `memories/<characterId>.md|json`) updated in real time; allow entries that apply to multiple NPCs without duplication.
 - Running setting doc: maintain a session-scoped scene/setting document tracking location(s), participants, time-of-day, and state changes (entries/exits, movements, activities). Persist across sessions for continuity.
+- Time in setting: allow `/scene time: YYYY-MM-DD` or `year: YYYY` to set narrative time; timeline events also record `occurred_at`.
 - Time continuity: represent both real time and in-world time; heuristics to infer returns/absences; user overrides allowed.
 - Snapshot/rewind: create lightweight checkpoints each turn; allow restoring a prior checkpoint and regenerating from there.
 - Slash commands: `/LLM <directive>` for meta instructions; `/<NPCName> <message>` to address a specific NPC; optional `/scene <note>` to adjust setting.

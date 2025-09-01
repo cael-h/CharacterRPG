@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS characters (
   system_prompt TEXT NOT NULL,
   memory_json TEXT NOT NULL,
   avatar_uri TEXT,
+  birth_year INTEGER,
   age INTEGER,
   created_at INTEGER,
   updated_at INTEGER
@@ -88,4 +89,4 @@ CREATE TABLE IF NOT EXISTS timeline_events (
 
 // Best-effort migrations for older DBs (add missing columns)
 try { db.prepare('ALTER TABLE characters ADD COLUMN age INTEGER').run(); } catch {}
-
+try { db.prepare('ALTER TABLE characters ADD COLUMN birth_year INTEGER').run(); } catch {}

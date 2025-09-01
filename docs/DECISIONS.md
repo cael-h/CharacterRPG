@@ -135,3 +135,9 @@ Source: Derived from the architecture doc and transcript.
 - Context: Mature content depends on participant ages.
 - Decision: Add `age` to character profiles; include ages in LLM context; if sexual content is requested and ages are missing, prompt for clarification (or annotate 18+ in auto mode).
 - Consequences: Clearer safety posture; fewer false blocks; better continuity.
+
+
+## D28: Birth year + narrative time
+- Context: Flashbacks and time jumps change ages mid-story.
+- Decision: Track `birth_year` and compute age at the current narrative time from the setting or timeline; include computed age in LLM system context.
+- Consequences: Accurate ages during flashbacks/forwards with minimal user effort (set `/scene time:` when needed).
