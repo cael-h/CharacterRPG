@@ -24,11 +24,13 @@ Later on 2025-08-31
 - Hooked up Timeline Manager; NPC replies create simple per-character events; `/scene` notes add global events.
 - Client sources scaffolded: Zustand store and Conversation screen with left/right bubbles and avatar placeholder.
 - Server export endpoints: `/api/exports/transcripts/:sessionId`, `/api/exports/memories/:characterId`, `/api/exports/timelines/:ownerId` (use `global` for global timeline).
+ - Server export endpoint added: `/api/exports/setting/:sessionId` → latest scene state.
 - Usage logger: rough token estimation written to `usage/<sessionId>.jsonl` for each turn (player/NPC).
 - RN app shell and screens: `App.tsx`, `src/screens/Characters.tsx`, `src/screens/Settings.tsx` created (offline-friendly sources).
 - Client: Conversation now starts a session automatically if missing and tracks rough token usage locally per model.
 - Client: Characters screen supports selecting participants for the scene.
 - Server: added a minimal test file (`src/tests/basic.ts`) and a `npm test` script that compiles and runs it without extra deps.
+ - Server: added permissive CORS middleware for cross-origin testing (includes `X-Provider` headers).
 
 Dependency hygiene
 - Replaced `ts-node-dev` with `tsx` for the dev runner to avoid deprecated transitive deps (`glob@7`, `rimraf@2`, `inflight`).
