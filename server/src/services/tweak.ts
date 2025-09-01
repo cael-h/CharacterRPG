@@ -8,7 +8,7 @@ export type TweakResult =
 
 // Very lightweight heuristic. This is NOT a replacement for a full policy model.
 // It catches obvious illegal requests and proposes safer rewrites when possible.
-export function tweakUserText(input: string, mode: TweakMode): TweakResult {
+export function tweakUserText(input: string, mode: TweakMode, ctx?: { ages?: Record<string, number|null>, mature?: boolean }): TweakResult {
   const text = input.trim();
   // Absolute block: sexual content involving minors
   const minorSexual = /(minor|under\s*age|child|teen)\s*(sex|sexual|porn|nsfw|explicit)/i;
@@ -16,33 +16,38 @@ export function tweakUserText(input: string, mode: TweakMode): TweakResult {
     return { action: 'block', reason: 'Sexual content involving minors is prohibited.' };
   }
 
-  // Suggest/rewrite for explicit planning of illegal harm
-  const violentCrime = /(murder|kill|assassinate|bomb|terror|poison)\b/i;
-  if (violentCrime.test(text)) {
-    if (mode === 'auto') {
-      const rewrite = text.replace(violentCrime, 'confront');
-      return { action: 'rewrite', text: rewrite, note: 'Rewrote to remove explicit violent/illegal act.' };
-    }
-    if (mode === 'suggest') {
-      return { action: 'suggest', text, suggestion: 'Consider reframing as a lawful conflict or investigation (e.g., “confront the villain” or “gather evidence”).' };
+  // If text implies sexual content, ensure ages are adult or known
+  const sexual = /(sex|sexual|NSFW|erotic|intimate|make\s*love)\b/i;
+  if (sexual.test(text)) {
+    const ages = ctx?.ages || {};
+    const values = Object.values(ages);
+    const unknown = values.length === 0 || values.some(v => v == null);
+    const underage = values.some(v => (v as any) !== null && Number(v) < 18);
+    if (underage) return { action: 'block', reason: 'One or more characters are under 18.' };
+    if (unknown) {
+      if (mode === 'auto') {
+        // Soft auto-tweak: annotate request to clarify adults-only
+        return { action: 'rewrite', text: text + ' (Note: all characters are adults 18+.)', note: 'Assumed adult ages due to unspecified ages.' };
+      }
+      return { action: 'suggest', text, suggestion: 'Please specify character ages (18+) in profiles or your message so adult content is clearly constrained.' };
     }
   }
 
-  // Suggest/rewrite for theft/drugs specifics
-  const theft = /(steal|rob|break\s*in|burglary)\b/i;
-  const drugs = /(make|sell|buy)\s+(meth|coke|cocaine|heroin|drugs)\b/i;
-  if (theft.test(text) || drugs.test(text)) {
+  // Allow crime as narrative, but block instructional detail for serious harm
+  // Detect step-by-step or how-to for explosives / weapons / hard harm
+  const howTo = /(how\s+to|step[-\s]*by[-\s]*step|recipe|materials\s+list|exact\s+amounts|wiring\s+diagram)/i;
+  const serious = /(bomb|explosive|pipe\s*bomb|molotov|napalm|manufacture\s*gunpowder|3d\s*printed\s*gun|untraceable\s*weapon|poison|ricin|sarin)/i;
+  if (serious.test(text) && howTo.test(text)) {
     if (mode === 'auto') {
-      const rewrite = text
-        .replace(theft, 'retrieve')
-        .replace(drugs, 'acquire supplies');
-      return { action: 'rewrite', text: rewrite, note: 'Rewrote to avoid explicit illegal activity.' };
+      return { action: 'rewrite', text: text.replace(howTo, 'high-level'), note: 'Removed instructional detail for dangerous wrongdoing.' };
     }
     if (mode === 'suggest') {
-      return { action: 'suggest', text, suggestion: 'Try a lawful alternative (e.g., “retrieve the item via a trade or ruse”).' };
+      return { action: 'suggest', text, suggestion: 'We can include this as backstory or high-level narrative without step-by-step instructions.' };
     }
+    return { action: 'allow', text };
   }
+
+  // Theft allowed as narrative; no tweak needed by default
 
   return { action: 'allow', text };
 }
-

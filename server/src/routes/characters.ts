@@ -12,15 +12,15 @@ router.get('/', (_req, res) => {
 router.post('/', (req, res) => {
   const id = uuid();
   const now = Date.now();
-  const { name, voice, provider, system_prompt, memory_json, avatar_uri } = req.body || {};
-  db.prepare('INSERT INTO characters VALUES (?,?,?,?,?,?,?,?,?)')
-    .run(id, name, voice, provider, system_prompt, memory_json ?? '{}', avatar_uri ?? null, now, now);
+  const { name, voice, provider, system_prompt, memory_json, avatar_uri, age } = req.body || {};
+  db.prepare('INSERT INTO characters VALUES (?,?,?,?,?,?,?,?,?,?)')
+    .run(id, name, voice, provider, system_prompt, memory_json ?? '{}', avatar_uri ?? null, age ?? null, now, now);
   res.json({ id });
 });
 
 router.patch('/:id', (req, res) => {
   const now = Date.now();
-  const { name, voice, provider, system_prompt, memory_json, avatar_uri } = req.body || {};
+  const { name, voice, provider, system_prompt, memory_json, avatar_uri, age } = req.body || {};
   const row = db.prepare('SELECT * FROM characters WHERE id=?').get(req.params.id);
   if (!row) return res.status(404).json({ error: 'not_found' });
   const next = {
@@ -30,9 +30,9 @@ router.patch('/:id', (req, res) => {
     system_prompt: system_prompt ?? row.system_prompt,
     memory_json: memory_json ?? row.memory_json,
     avatar_uri: avatar_uri ?? row.avatar_uri,
+    age: age ?? row.age,
   };
-  db.prepare('UPDATE characters SET name=?, voice=?, provider=?, system_prompt=?, memory_json=?, avatar_uri=?, updated_at=? WHERE id=?')
-    .run(next.name, next.voice, next.provider, next.system_prompt, next.memory_json, next.avatar_uri, now, req.params.id);
+  db.prepare('UPDATE characters SET name=?, voice=?, provider=?, system_prompt=?, memory_json=?, avatar_uri=?, age=?, updated_at=? WHERE id=?')
+    .run(next.name, next.voice, next.provider, next.system_prompt, next.memory_json, next.avatar_uri, next.age, now, req.params.id);
   res.json({ ok: true });
 });
-

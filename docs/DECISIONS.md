@@ -129,3 +129,9 @@ Source: Derived from the architecture doc and transcript.
 - Context: You want the app to help keep stories within legal boundaries without harsh stops.
 - Decision: Add a Prompt Tweaker with modes: off, suggest, auto. It can propose safer phrasings or rewrite the user’s input; explicit sexual content involving minors is always blocked.
 - Consequences: Better UX than hard refusals; uses lightweight heuristics now, can plug in a proper classifier later.
+
+
+## D27: Character ages tracked and surfaced
+- Context: Mature content depends on participant ages.
+- Decision: Add `age` to character profiles; include ages in LLM context; if sexual content is requested and ages are missing, prompt for clarification (or annotate 18+ in auto mode).
+- Consequences: Clearer safety posture; fewer false blocks; better continuity.

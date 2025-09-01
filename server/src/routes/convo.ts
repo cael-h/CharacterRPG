@@ -25,9 +25,20 @@ router.post('/turn', async (req, res) => {
   db.prepare('INSERT INTO turns VALUES (?,?,?,?,?,?,?,?)')
     .run(playerTurnId, session_id, 'player', 'player', parsed.remainder || player_text, null, Date.now(), JSON.stringify({ commands: parsed.commands }));
   let playerFinal = parsed.remainder || player_text;
+  // Load ages for mentioned characters
+  const ages: Record<string, number|null> = {};
+  try {
+    if (Array.isArray(characters)) {
+      for (const c of characters) {
+        const row = db.prepare('SELECT age FROM characters WHERE name=?').get(c.name);
+        ages[c.name] = row?.age ?? null;
+      }
+    }
+  } catch {}
+
   // Prompt tweaker
   const mode = (tweakMode as TweakMode) ?? 'off';
-  const tweak = tweakUserText(playerFinal, mode);
+  const tweak = tweakUserText(playerFinal, mode, { ages, mature });
   if (tweak.action === 'block') {
     // Do not call the LLM; return a system message
     appendTranscript(session_id, `system: Blocked input: ${tweak.reason}`);
@@ -36,6 +47,8 @@ router.post('/turn', async (req, res) => {
   if (tweak.action === 'rewrite') {
     playerFinal = tweak.text;
     appendTranscript(session_id, `system: ${tweak.note}`);
+    // Echo tweaked prompt
+    appendTranscript(session_id, `system: Tweaked input -> ${playerFinal}`);
   }
   appendTranscript(session_id, `player: ${playerFinal}`);
   recordUsage(session_id, provider ?? 'mock', 'player', playerFinal);
