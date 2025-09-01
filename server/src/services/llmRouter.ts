@@ -1,6 +1,6 @@
 import { mockTurn } from '../providers/mock/text.js';
 
-type Character = { id?: string; name: string; system_prompt: string };
+type Character = { id?: string; name: string; system_prompt: string; age?: number|null; birth_year?: number|null };
 
 type Args = {
   provider: 'openai' | 'gemini' | 'mock' | 'ollama',
@@ -12,8 +12,19 @@ type Args = {
   mature?: boolean,
 };
 
-const systemHeader = (chars: Character[], mature?: boolean) => {
-  const withAges = chars.map(c => c.name + (c as any).age ? ` (${(c as any).age})` : '').join(', ');
+function ageAtTime(birthYear?: number|null, iso?: string) {
+  if (!birthYear) return null;
+  try {
+    const y = new Date(iso || Date.now()).getUTCFullYear();
+    return Math.max(0, y - birthYear);
+  } catch { return null; }
+}
+
+const systemHeader = (chars: Character[], mature?: boolean, narrativeTimeIso?: string) => {
+  const withAges = chars.map(c => {
+    const a = c.age ?? ageAtTime(c.birth_year ?? null, narrativeTimeIso);
+    return a != null ? `${c.name} (${a})` : c.name;
+  }).join(', ');
   const base = `You are running a scene. Characters: ${withAges || chars.map(c=>c.name).join(', ')}.`;
   const jsonRule = `Output ONLY strict JSON of shape {"turns":[{"speaker":"<one>","text":"...","speak":true,"emotion":"neutral"}]}. Keep each turn ≤ 2 sentences.`;
   const matureNote = mature
@@ -22,8 +33,8 @@ const systemHeader = (chars: Character[], mature?: boolean) => {
   return `${base}\n${jsonRule}\n${matureNote}`;
 };
 
-export async function llmTurn(a: Args) {
-  const sys = systemHeader(a.characters, a.mature);
+export async function llmTurn(a: Args & { narrativeTimeIso?: string }) {
+  const sys = systemHeader(a.characters, a.mature, a.narrativeTimeIso);
   const user = a.player_text;
   if (a.provider === 'ollama') {
     const { ollamaTurn } = await import('../providers/ollama/text.js');

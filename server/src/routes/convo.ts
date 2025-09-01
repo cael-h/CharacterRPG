@@ -25,13 +25,15 @@ router.post('/turn', async (req, res) => {
   db.prepare('INSERT INTO turns VALUES (?,?,?,?,?,?,?,?)')
     .run(playerTurnId, session_id, 'player', 'player', parsed.remainder || player_text, null, Date.now(), JSON.stringify({ commands: parsed.commands }));
   let playerFinal = parsed.remainder || player_text;
-  // Load ages for mentioned characters
+  // Load ages/birth years for mentioned characters
   const ages: Record<string, number|null> = {};
+  const enriched: any[] = [];
   try {
     if (Array.isArray(characters)) {
       for (const c of characters) {
-        const row = db.prepare('SELECT age FROM characters WHERE name=?').get(c.name);
+        const row = db.prepare('SELECT age, birth_year FROM characters WHERE name=?').get(c.name);
         ages[c.name] = row?.age ?? null;
+        enriched.push({ ...c, age: row?.age ?? null, birth_year: row?.birth_year ?? null });
       }
     }
   } catch {}
@@ -53,16 +55,31 @@ router.post('/turn', async (req, res) => {
   appendTranscript(session_id, `player: ${playerFinal}`);
   recordUsage(session_id, provider ?? 'mock', 'player', playerFinal);
 
-  // Apply scene command (if any) — naive append to setting manager later
+  // Apply scene command (if any) — update setting and optional time
   for (const c of parsed.commands) {
     if (c.kind === 'scene') {
       addEvent({ scope: 'global', ownerId: null, title: 'Scene note', summary: c.text, sources: { session_id } });
-      try { updateSetting(session_id, { note: c.text }); } catch {}
+      // Detect time changes like "time: YYYY-MM-DD" or "year: YYYY"
+      const m1 = c.text.match(/time\s*:\s*([0-9]{4}(?:-[0-9]{2}(?:-[0-9]{2})?)?)/i);
+      const m2 = c.text.match(/year\s*:\s*([0-9]{4})/i);
+      const delta: any = { note: c.text };
+      if (m1) delta.time = m1[1];
+      else if (m2) delta.time = `${m2[1]}-01-01`;
+      try { updateSetting(session_id, delta); } catch {}
     }
   }
 
   // Call LLM (mock by default in this environment)
-  const npc = await llmTurn({ provider: provider ?? 'mock', scene_context, characters, player_text: playerFinal, providerKey: (req as any).providerKey, model, mature });
+  // Determine narrative time from scene_state if available
+  let narrativeIso: string | undefined;
+  try {
+    const row = db.prepare('SELECT current_json FROM scene_state WHERE session_id=? ORDER BY updated_at DESC LIMIT 1').get(session_id);
+    if (row) {
+      const cur = JSON.parse(row.current_json);
+      if (cur?.time) narrativeIso = cur.time;
+    }
+  } catch {}
+  const npc = await llmTurn({ provider: provider ?? 'mock', scene_context, characters: enriched.length? enriched: characters, player_text: playerFinal, providerKey: (req as any).providerKey, model, mature, narrativeTimeIso: narrativeIso });
 
   const out: any[] = [];
   // If suggest mode, prepend a system suggestion

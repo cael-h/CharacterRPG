@@ -112,3 +112,8 @@ Acceptance
 - Add UI control in Settings for modes: off, suggest, auto.
 - Server: run `tweakUserText` before LLM; in suggest mode prepend a System hint; in auto mode rewrite; block prohibited minors content.
 - Later: replace heuristic with a small safety model or provider moderation endpoint.
+
+### 3f) Ages and narrative time
+- Characters: add optional Birth Year field in UI; send `birth_year` to server.
+- Server: include birth year and/or age in system context; compute age from `birth_year` when `scene_state.time` is set.
+- Slash `/scene` time control: support `time: YYYY-MM-DD` or `year: YYYY` to set narrative time.
