@@ -4,13 +4,13 @@ function buildPrompt(system: string, user: string) {
   return `${system}\nYou must answer ONLY with strict JSON of shape {"turns":[{"speaker":"<one of the characters>","text":"...","speak":true,"emotion":"neutral"}]}. Keep each turn to <= 2 sentences.\nUser: ${user}`;
 }
 
-export async function ollamaTurn(system: string, user: string) {
+export async function ollamaTurn(system: string, user: string, modelOverride?: string) {
   const prompt = buildPrompt(system, user);
   const res = await fetch(`${OLLAMA_BASE}/api/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: process.env.OLLAMA_MODEL || 'llama3.1:8b-instruct-q4_K_M',
+      model: modelOverride || process.env.OLLAMA_MODEL || 'llama3.1:8b-instruct-q4_K_M',
       prompt,
       stream: false,
       options: { temperature: 0.7 }
@@ -27,4 +27,3 @@ export async function ollamaTurn(system: string, user: string) {
   } catch {}
   return { turns: [{ speaker: 'Narrator', text: res?.response ?? '…', speak: false, emotion: 'neutral' }] };
 }
-

@@ -31,7 +31,9 @@ Later on 2025-08-31
 - Client: Characters screen supports selecting participants for the scene.
 - Server: added a minimal test file (`src/tests/basic.ts`) and a `npm test` script that compiles and runs it without extra deps.
 - Server: added permissive CORS middleware for cross-origin testing (includes `X-Provider` headers).
- - Server: added local OSS adapter `provider=ollama` (env: `OLLAMA_BASE`, `OLLAMA_MODEL`).
+- Server: added local OSS adapter `provider=ollama` (env: `OLLAMA_BASE`, `OLLAMA_MODEL`).
+ - Client: settings now include provider=Ollama with presets (Qwen2.5 7B, Llama 3.1 8B, Hermes RP 8B) and a custom model field.
+ - Client: mature language toggle plumbed through to server; prompt adjusted accordingly.
 
 Dependency hygiene
 - Replaced `ts-node-dev` with `tsx` for the dev runner to avoid deprecated transitive deps (`glob@7`, `rimraf@2`, `inflight`).
