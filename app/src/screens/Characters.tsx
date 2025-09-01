@@ -6,6 +6,7 @@ export default function Characters() {
   const { apiBase, characters, selected, set } = useStore();
   const [name, setName] = useState('Olive');
   const [systemPrompt, setSystemPrompt] = useState('You are Olive.');
+  const [age, setAge] = useState('');
 
   const load = async () => {
     try {
@@ -17,7 +18,8 @@ export default function Characters() {
   useEffect(()=>{ load(); }, []);
 
   const create = async () => {
-    await fetch(`${apiBase}/api/characters`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name, system_prompt: systemPrompt }) }).then(r=>r.json());
+    const ageNum = age ? Number(age) : undefined;
+    await fetch(`${apiBase}/api/characters`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name, system_prompt: systemPrompt, age: ageNum }) }).then(r=>r.json());
     await load();
   };
 
@@ -41,6 +43,7 @@ export default function Characters() {
         <Text style={{fontWeight:'600'}}>Add Character</Text>
         <TextInput value={name} onChangeText={setName} placeholder="Name" style={{borderWidth:1, borderColor:'#ccc', padding:8, borderRadius:6, marginVertical:6}} />
         <TextInput value={systemPrompt} onChangeText={setSystemPrompt} placeholder="System prompt" style={{borderWidth:1, borderColor:'#ccc', padding:8, borderRadius:6, marginVertical:6}} />
+        <TextInput value={age} onChangeText={setAge} placeholder="Age (optional)" keyboardType="numeric" style={{borderWidth:1, borderColor:'#ccc', padding:8, borderRadius:6, marginVertical:6}} />
         <Button title="Create" onPress={create} />
       </View>
     </View>
