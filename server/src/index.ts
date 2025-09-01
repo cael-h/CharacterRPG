@@ -7,10 +7,12 @@ import { router as characterRouter } from './routes/characters.js';
 import { router as sessionRouter } from './routes/sessions.js';
 import { router as convoRouter } from './routes/convo.js';
 import { stripSensitiveHeaders } from './middleware/stripHeaders.js';
+import { cors } from './middleware/cors.js';
 import { router as exportRouter } from './routes/exports.js';
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
+app.use(cors());
 app.use(stripSensitiveHeaders());
 
 // Ensure storage directories exist

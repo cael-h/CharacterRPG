@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import fs from 'fs';
 import path from 'path';
+import { db } from '../db.js';
 
 export const router = Router();
 
@@ -26,3 +27,12 @@ router.get('/timelines/:ownerId', (req, res) => {
   res.type('text/markdown').send(fs.readFileSync(p, 'utf-8'));
 });
 
+router.get('/setting/:sessionId', (req, res) => {
+  const row = db.prepare('SELECT * FROM scene_state WHERE session_id=? ORDER BY updated_at DESC LIMIT 1').get(req.params.sessionId);
+  if (!row) return res.status(404).json({ error: 'not_found' });
+  try {
+    res.json({ sessionId: req.params.sessionId, current: JSON.parse(row.current_json), updated_at: row.updated_at });
+  } catch {
+    res.json({ sessionId: req.params.sessionId, current: row.current_json, updated_at: row.updated_at });
+  }
+});
