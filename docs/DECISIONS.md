@@ -116,3 +116,7 @@ Source: Derived from the architecture doc and transcript.
 - Context: Long-running stories need recall without overwhelming context windows.
 - Decision: Maintain a concise global timeline and per-character timelines that reflect each character’s knowledge; update when characters learn new info.
 - Consequences: Better long-term memory scaffolding; extra summarization work each turn.
+## D24: Local open-source provider (Ollama)
+- Context: You asked for a private, no-sharing option for initial builds.
+- Decision: Support a local provider via Ollama with a simple adapter; default to `llama3.1:8b-instruct` (configurable).
+- Consequences: Zero external data egress when used; JSON enforcement handled by prompt + fallback.
