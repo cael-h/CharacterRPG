@@ -1,0 +1,9 @@
+# General
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+
+# Do not commit local env files
+server/.env
+
