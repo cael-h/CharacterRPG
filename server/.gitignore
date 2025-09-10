@@ -1,0 +1,11 @@
+node_modules/
+dist/
+rpg.sqlite
+uploads/
+usage/
+transcripts/
+profiles/
+# Generated or local test artifacts
+memories/*.md
+timelines/*.md
+

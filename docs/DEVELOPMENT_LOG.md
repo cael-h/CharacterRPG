@@ -49,3 +49,63 @@ Notes for resumption
 - When enabling installs, run from `server/`:
   - `cp .env.example .env` (adjust paths if needed)
   - `npm i && npm run dev`
+
+
+## 2025-09-09
+- Seeds + Docs import:
+  - Added seeds importer: `server/seeds/characters/<Name>/profile.md` (+docs) auto‑imports on boot.
+  - Added docs importer: scans `docs/Character_*.md` (e.g., `Character_Olive.md`) to create/update characters, snapshot base_json, and write profile bundles.
+  - API: `POST /api/characters/import-from-docs` triggers a re-import.
+- Documents API:
+  - `GET/POST/GET/DELETE /api/characters/:id/docs[/:filename]` stored under `profiles/<id>/docs/`.
+- Save/Import base profile:
+  - `POST /api/characters/:id/save-profile` snapshots current fields and writes `profile.md` (plus `timeline.md` if present).
+  - `POST /api/characters/:id/import-base` (multipart md) replaces system prompt and updates base_json.
+- RAG scaffolding wired into convo:
+  - `/api/convo/turn` now accepts `useRag`, `reviewer_provider`, `reviewer_model`, and `style_short`.
+  - Builds compact context from profile/timeline/docs/memories; adds a brief‑response guideline when `style_short` is true.
+  - Reviewer route now supports OpenAI/Ollama; falls back to heuristic when unspecified.
+- OpenAI adapter:
+  - Added provider with default model `gpt-5-nano`; Settings exposes `gpt-5`, `gpt-5-mini`, `gpt-5-nano`.
+- UI:
+  - Settings/Conversation screens: RAG toggle, reviewer provider/model inputs, “Short” toggle.
+- CLI:
+  - Provider menu includes OpenAI; added `--rag` and `--short` flags (defaults on).
+
+Artifacts added
+- `docs/USAGE_AND_TESTING_CHEATSHEET.md` — concise terminal commands for imports, curl tests, CLI usage, docs CRUD, and RAG/reviewer endpoints.
+
+Notes / Next steps:
+- Reviewer caching: add per-session cache with TTL and topic change heuristics.
+ - Implemented simple per-session cache with 2‑minute TTL.
+- Reviewer prompt: initial JSON reviewer with short‑reply guidance; next add conflict detection + in‑character clarify.
+- Gemini adapter next; then convert reviewer to use chosen model end‑to‑end.
+
+## 2025-09-10
+- Loader and session stability
+  - Fixed here‑string misuse that swallowed API responses; switched to piping/explicit here‑string into Python for JSON printing.
+  - Added HTTP status/body length diagnostics; removed once stable via `DEBUG_PRINT=0`.
+  - Made session creation and turn flow resilient to non‑JSON model output; explicit errors replace silent `…` fallbacks.
+- Provider toggles and key handling
+  - Clean split between server `.env` (secrets + infra) and loader `scripts/olive.config` (per‑run, non‑secret defaults).
+  - Loader no longer imports `.env`; BYOK header only sent when `PROVIDER_KEY` is explicitly set in the config.
+  - Precedence: request `use_responses`/model/provider override env defaults; server still supports `OPENAI_USE_RESPONSES` as a fallback.
+- OpenAI adapters
+  - Text adapter now supports both Chat Completions and Responses API (toggle: `use_responses` or `OPENAI_USE_RESPONSES=true`).
+  - Switched defaults to `gpt-4o-mini` for broad availability; clear error messages on HTTP/model errors and non‑JSON content.
+  - JSON helper (reviewer) hardened with the same error handling and model defaults.
+- RAG/Reviewer
+  - Added `USE_RAG` toggle in loader; `REVIEWER_PROVIDER` can be `stub|openai`.
+  - Reviewer cache (2‑minute TTL) prevents repeat LLM calls per session.
+- Character meta preferences
+  - Loader now fetches `/api/characters/:id/meta` and uses `provider_pref.provider/model` when `PROVIDER` or `MODEL` is unset or `auto`.
+- Responses API support
+  - New pathway via `/v1/responses` when enabled; parses `output_text` and enforces strict JSON contract.
+- Dev docs
+  - Updated `docs/USAGE_AND_TESTING_CHEATSHEET.md` to reflect 4o‑mini defaults, BYOK header usage, and config split.
+
+Open issues / follow‑ups
+- Playground key input: add optional `X-Provider-Key` field to avoid relying on `.env` during browser tests.
+- Reviewer prompt improvements: contradiction detection, ask‑to‑clarify signal plumbing.
+- Gemini adapter (text) parity with OpenAI + Responses pathway.
+- Unit tests: adapters (OpenAI/Responses), loader parser, RAG scoring, reviewer selection.

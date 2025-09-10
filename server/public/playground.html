@@ -1,0 +1,271 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CharacterRPG Playground</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; }
+    header { padding: 12px 16px; border-bottom: 1px solid #eee; display:flex; gap:12px; align-items:center; }
+    main { display:flex; height: calc(100vh - 54px); }
+    aside { width: 320px; border-right: 1px solid #eee; padding: 12px; overflow:auto; }
+    section { flex:1; display:flex; flex-direction:column; }
+    #log { flex:1; padding:12px; overflow:auto; background:#fafafa; }
+    .row { display:flex; gap:8px; margin:6px 0; align-items:center; }
+    .col { display:flex; flex-direction:column; gap:6px; }
+    input, select, textarea, button { font: inherit; }
+    textarea { width: 100%; min-height: 60px; }
+    .bubble { max-width: 70%; margin: 6px 0; padding: 8px 10px; border-radius: 8px; }
+    .npc { background:#f1f1f1; align-self:flex-start; }
+    .player { background:#d1eaff; align-self:flex-end; }
+    .label { font-weight:600; margin-right:6px; }
+    .small { color:#666; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <header>
+    <strong>CharacterRPG Playground</strong>
+    <span class="small">Use this to chat without the mobile app.</span>
+  </header>
+  <main>
+    <aside>
+      <div class="col">
+        <div class="row">
+          <label class="label">Provider</label>
+          <select id="provider">
+            <option value="mock">mock</option>
+            <option value="ollama">ollama</option>
+          </select>
+        </div>
+        <div class="row">
+          <label class="label">Model</label>
+          <input id="model" placeholder="optional (e.g., deepseek-r1:1.5b)"/>
+        </div>
+        <div class="row">
+          <label class="label">Mature</label>
+          <input id="mature" type="checkbox"/>
+        </div>
+        <div class="row">
+          <label class="label">Tweaker</label>
+          <select id="tweak">
+            <option value="off">off</option>
+            <option value="suggest">suggest</option>
+            <option value="auto">auto</option>
+          </select>
+        </div>
+        <hr />
+        <div class="col">
+          <strong>Characters</strong>
+          <div id="charList" class="small">Loading…</div>
+          <div class="row" style="margin-top:6px;">
+            <button id="extractFacts">Extract Facts</button>
+            <button id="viewFacts">View Facts</button>
+          </div>
+          <div class="col" style="margin-top:8px;">
+            <input id="newCharName" placeholder="Name (e.g., Olive)"/>
+            <textarea id="newCharSys" placeholder="System prompt"></textarea>
+            <div class="row">
+              <input id="newCharAge" placeholder="Age (optional)" style="width:120px;"/>
+              <input id="newCharBirth" placeholder="Birth year (opt)" style="width:140px;"/>
+            </div>
+            <button id="addChar">Add Character</button>
+          </div>
+        </div>
+        <hr />
+        <div class="col">
+          <strong>Session</strong>
+          <div class="row">
+            <button id="startSession">Start Session</button>
+            <button id="endSession">End</button>
+          </div>
+          <div id="sessionInfo" class="small">No session</div>
+        </div>
+        <hr />
+        <div class="col">
+          <strong>Ollama</strong>
+          <div class="row">
+            <button id="checkOllama">Health</button>
+          </div>
+          <div id="ollamaInfo" class="small"></div>
+        </div>
+      </div>
+    </aside>
+    <section>
+      <div id="log"></div>
+      <div style="padding:12px; border-top:1px solid #eee;">
+        <div class="row" style="margin-bottom:6px;">
+          <input id="storyName" placeholder="Story name (blank = auto)" style="flex:1"/>
+          <button id="startSessionBtn">Start Session (Story)</button>
+        </div>
+        <textarea id="input" placeholder="Type a message or /LLM ..."></textarea>
+        <div class="row" style="justify-content:flex-end;">
+          <button id="send">Send</button>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const log = $("log");
+    const providerSel = $("provider");
+    const modelInp = $("model");
+    const matureChk = $("mature");
+    const tweakSel = $("tweak");
+    const charList = $("charList");
+    const sessionInfo = $("sessionInfo");
+    let sessionId = localStorage.getItem('sessionId') || null;
+    let characters = [];
+    let selected = new Set();
+
+    function addBubble(role, speaker, text) {
+      const div = document.createElement('div');
+      div.className = 'bubble ' + (role === 'player' ? 'player' : 'npc');
+      div.innerHTML = role === 'npc' ? `<span class="label">${speaker}:</span> ${text}` : text;
+      log.appendChild(div);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    async function loadCharacters() {
+      const rows = await fetch('/api/characters').then(r=>r.json());
+      characters = rows;
+      charList.innerHTML = '';
+      for (const c of rows) {
+        const id = `char-${c.id}`;
+        const wrap = document.createElement('div');
+        wrap.className = 'row';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.id = id;
+        cb.onchange = () => { cb.checked ? selected.add(c.id) : selected.delete(c.id); };
+        const label = document.createElement('label');
+        label.setAttribute('for', id);
+        label.textContent = c.name;
+        const resetBtn = document.createElement('button');
+        resetBtn.textContent = 'Reset';
+        resetBtn.onclick = async () => {
+          if (!confirm(`Reset ${c.name} to base profile?`)) return;
+          await fetch(`/api/characters/${c.id}/reset`, { method:'POST' });
+          alert('Reset done');
+        };
+        const delBtn = document.createElement('button');
+        delBtn.textContent = 'Delete';
+        delBtn.onclick = async () => {
+          if (!confirm(`Delete ${c.name}? This removes profile/memory/timeline.`)) return;
+          await fetch(`/api/characters/${c.id}`, { method:'DELETE' });
+          await loadCharacters();
+        };
+        const right = document.createElement('div');
+        right.className = 'row';
+        const saveBtn = document.createElement('button');
+        saveBtn.textContent = 'Save Profile';
+        saveBtn.onclick = async () => {
+          await fetch(`/api/characters/${c.id}/save-profile`, { method:'POST' });
+          alert('Profile saved to bundle');
+        };
+        right.appendChild(saveBtn);
+        right.appendChild(resetBtn);
+        right.appendChild(delBtn);
+        const left = document.createElement('div');
+        left.appendChild(cb); left.appendChild(label);
+        left.style.flex = '1';
+        wrap.appendChild(left); wrap.appendChild(right);
+        charList.appendChild(wrap);
+      }
+      if (!rows.length) charList.textContent = 'No characters yet';
+    }
+
+    async function addCharacter() {
+      const name = $('newCharName').value.trim() || 'Olive';
+      const sys = $('newCharSys').value.trim() || 'You are Olive.';
+      const age = Number($('newCharAge').value) || null;
+      const birth = Number($('newCharBirth').value) || null;
+      await fetch('/api/characters', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name, system_prompt: sys, age, birth_year: birth }) });
+      $('newCharName').value = '';
+      $('newCharSys').value = '';
+      $('newCharAge').value = '';
+      $('newCharBirth').value = '';
+      await loadCharacters();
+    }
+
+    async function startSession() {
+      const participants = [...selected].map(id => ({ id }));
+      const provider = providerSel.value;
+      const r = await fetch('/api/sessions', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ title:'Playground', provider, participants }) }).then(r=>r.json());
+      sessionId = r.id; localStorage.setItem('sessionId', sessionId);
+      sessionInfo.textContent = 'Session: ' + sessionId;
+      addBubble('npc','System','Session started');
+    }
+
+    async function endSession() {
+      if (!sessionId) return;
+      await fetch(`/api/sessions/${sessionId}/end`, { method:'POST' });
+      addBubble('npc','System','Session ended');
+      sessionInfo.textContent = 'No session';
+      sessionId = null; localStorage.removeItem('sessionId');
+    }
+
+    async function sendTurn() {
+      const text = $('input').value.trim();
+      if (!text) return;
+      if (!sessionId) await startSession();
+      addBubble('player','player',text);
+      const provider = providerSel.value;
+      const model = modelInp.value || undefined;
+      const tweakMode = tweakSel.value;
+      const mature = matureChk.checked;
+      const chars = characters.filter(c => selected.has(c.id)).map(c=> ({ name: c.name, system_prompt: c.system_prompt || 'You are ' + c.name + '.' }));
+      const body = { session_id: sessionId, player_text: text, scene_context: {}, characters: chars, provider, model, mature, tweakMode };
+      const r = await fetch('/api/convo/turn', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }).then(r=>r.json());
+      for (const t of (r.turns || [])) addBubble('npc', t.speaker, t.text);
+      $('input').value = '';
+    }
+
+    async function checkOllama() {
+      const r = await fetch('/api/providers/ollama/health').then(r=>r.json()).catch(()=>({ok:false}));
+      $('ollamaInfo').textContent = r.ok ? `OK • ${r.version || 'unknown'} • Models: ${(r.models||[]).slice(0,6).join(', ')}` : 'unreachable';
+    }
+
+    // Wire events
+    $('addChar').onclick = addCharacter;
+    $('extractFacts').onclick = async () => {
+      try {
+        const r = await fetch(`/api/characters/${[...selected][0]}/extract-meta`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode: 'rules' }) }).then(r=>r.json());
+        alert('Facts extracted.');
+      } catch (e) { alert('Failed: '+e); }
+    };
+    // Optional LLM-based extraction (uses server OPENAI key or header if configured)
+    const llmBtn = document.createElement('button');
+    llmBtn.textContent = 'Extract (LLM)';
+    llmBtn.onclick = async () => {
+      try {
+        const r = await fetch(`/api/characters/${[...selected][0]}/extract-meta`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode: 'llm', reviewer_model: 'gpt-5-nano' }) }).then(r=>r.json());
+        alert('LLM facts extracted.');
+      } catch (e) { alert('Failed: '+e); }
+    };
+    document.querySelector('#extractFacts').parentElement.appendChild(llmBtn);
+    $('viewFacts').onclick = async () => {
+      try {
+        const r = await fetch(`/api/characters/${[...selected][0]}/meta`).then(r=>r.json());
+        alert(JSON.stringify(r, null, 2));
+      } catch (e) { alert('Failed: '+e); }
+    };
+    $('startSession').onclick = startSession;
+    $('startSessionBtn').onclick = async () => {
+      const story = document.getElementById('storyName').value.trim();
+      const participants = [...selected].map(id => ({ id }));
+      const provider = providerSel.value;
+      const mode = story ? 'continue' : 'new';
+      const r = await fetch('/api/sessions', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ title:'Playground', provider, participants, story: story||'story1', story_mode: mode }) }).then(r=>r.json());
+      sessionId = r.id; localStorage.setItem('sessionId', sessionId);
+      addBubble('npc','System',`Session started • ${story||'story1'} • ${participants.length} character(s)`);
+    };
+    $('endSession').onclick = endSession;
+    $('send').onclick = sendTurn;
+    $('checkOllama').onclick = checkOllama;
+
+    // Init
+    loadCharacters();
+    if (sessionId) sessionInfo.textContent = 'Session: ' + sessionId;
+  </script>
+</body>
+</html>

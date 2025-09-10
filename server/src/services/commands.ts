@@ -1,7 +1,9 @@
 export type ParsedCommand =
   | { kind: 'llm'; text: string }
   | { kind: 'npc'; name: string; text: string }
-  | { kind: 'scene'; text: string };
+  | { kind: 'scene'; text: string }
+  | { kind: 'addchar'; name: string; note?: string }
+  | { kind: 'charupdate'; name?: string; note?: string };
 
 export type ParsedMessage = {
   commands: ParsedCommand[];
@@ -40,9 +42,18 @@ export function parseMessage(input: string): ParsedMessage {
         continue;
       }
     }
+    // /addcharacter <Name> [note]
+    if (/^\/addcharacter\b/i.test(firstLine)) {
+      const m = firstLine.match(/^\/addcharacter\s+([^\s].*?)(?:\s+-\s*(.*))?$/i);
+      if (m) { commands.push({ kind: 'addchar', name: m[1].trim(), note: m[2]?.trim() }); rest = after; continue; }
+    }
+    // /charupdate [Name] [note]
+    if (/^\/charupdate\b/i.test(firstLine)) {
+      const m = firstLine.match(/^\/charupdate(?:\s+([^\s].*?))?(?:\s+-\s*(.*))?$/i);
+      if (m) { commands.push({ kind: 'charupdate', name: m[1]?.trim(), note: m[2]?.trim() }); rest = after; continue; }
+    }
     // Not a recognized command; break to avoid infinite loop
     break;
   }
   return { commands, remainder: rest };
 }
-

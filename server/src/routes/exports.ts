@@ -36,3 +36,28 @@ router.get('/setting/:sessionId', (req, res) => {
     res.json({ sessionId: req.params.sessionId, current: row.current_json, updated_at: row.updated_at });
   }
 });
+
+// Export character profile bundle main markdown
+router.get('/profile/:characterId', (req, res) => {
+  const id = req.params.characterId;
+  const dir = process.env.PROFILES_DIR || 'profiles';
+  const p = path.join(dir, id, 'profile.md');
+  if (fs.existsSync(p)) {
+    res.type('text/markdown').send(fs.readFileSync(p, 'utf-8'));
+    return;
+  }
+  // Synthesize from DB if file not present
+  const row = db.prepare('SELECT * FROM characters WHERE id=?').get(id);
+  if (!row) return res.status(404).json({ error: 'not_found' });
+  const lines: string[] = [];
+  lines.push(`# ${row.name} — Base Profile`);
+  if (row.age != null) lines.push(`- Age: ${row.age}`);
+  if (row.birth_year != null) lines.push(`- Birth Year: ${row.birth_year}`);
+  if (row.avatar_uri) lines.push(`- Avatar: ${row.avatar_uri}`);
+  if (row.profile_uri) lines.push(`- Source: ${row.profile_uri}`);
+  lines.push('');
+  lines.push('## System Prompt');
+  lines.push('');
+  lines.push(row.system_prompt || '');
+  res.type('text/markdown').send(lines.join('\n'));
+});
