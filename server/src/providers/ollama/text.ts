@@ -51,9 +51,13 @@ export function extractJsonWithTurns(text: string): any | null {
   return null;
 }
 
+interface OllamaResponse { response?: string }
+
 export async function ollamaTurn(system: string, user: string, modelOverride?: string) {
   const prompt = buildPrompt(system, user);
-  const res = await fetch(`${OLLAMA_BASE}/api/generate`, {
+  let data: OllamaResponse = { response: '' };
+  try {
+    const res = await fetch(`${OLLAMA_BASE}/api/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -62,9 +66,11 @@ export async function ollamaTurn(system: string, user: string, modelOverride?: s
       stream: false,
       options: { temperature: 0.3 }
     })
-  }).then(r => r.json()).catch(() => ({ response: '' }));
+  });
+    if (res.ok) data = (await res.json()) as OllamaResponse;
+  } catch {}
 
-  const txt = res?.response ?? '';
+  const txt = data.response ?? '';
   const obj = extractJsonWithTurns(txt);
   if (obj) return obj;
   return { turns: [{ speaker: 'Narrator', text: String(txt || '…'), speak: false, emotion: 'neutral' }] };

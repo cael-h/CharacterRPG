@@ -4,13 +4,22 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc -p tsconfig.json",
-    "start": "node dist/index.js",
+    "build": "tsc --noEmit -p tsconfig.json",
+    "start": "node --import tsx ./src/index.ts",
     "test": "tsx src/tests/run.ts",
     "cli": "tsx src/cli.ts",
     "kill:4000": "bash scripts/kill-port.sh 4000",
     "kill:port": "bash scripts/kill-port.sh",
-    "chat:olive": "bash scripts/load_character.sh scripts/olive.config"
+    "chat:olive": "bash scripts/load_character.sh scripts/olive.config",
+    "refresh:generic": "bash scripts/refresh-generic.sh",
+    "purge:characters": "bash scripts/purge-characters.sh",
+    "purge:by-name": "bash scripts/purge-by-name.sh",
+    "api:stories:list": "bash scripts/stories-list.sh",
+    "api:story:get": "bash scripts/story-get.sh",
+    "api:story:timeline:add": "bash scripts/story-timeline-add.sh",
+    "api:story:timeline:get": "bash scripts/story-timeline-get.sh",
+    "export:dropin": "bash scripts/export-to-dropin.sh",
+    "export:dropin:all": "bash scripts/export-all-dropin.sh"
   },
   "dependencies": {
     "better-sqlite3": "^9.4.0",
@@ -20,6 +29,10 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^5.0.3",
+    "@types/multer": "^2.0.0",
+    "@types/node": "^24.5.2",
     "tsx": "^4.15.7",
     "typescript": "^5.4.5"
   }

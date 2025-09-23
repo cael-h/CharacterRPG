@@ -1,7 +1,10 @@
 import { Router } from 'express';
+import type { Request, Response } from 'express';
 import { db } from '../db.js';
 import { randomUUID as uuid } from 'crypto';
+import path from 'path';
 import { llmTurn } from '../services/llmRouter.js';
+import type { LlmCharacter } from '../services/llmRouter.js';
 import { appendTranscript } from '../services/fileIO.js';
 import { extractAndStoreMemories } from '../services/memory.js';
 import { snapshotTurn } from '../services/snapshot.js';
@@ -10,19 +13,78 @@ import { addEvent } from '../services/timeline.js';
 import { updateSetting } from '../services/setting.js';
 import { recordUsage } from '../services/usage.js';
 import { tweakUserText, TweakMode } from '../services/tweak.js';
+import type { AgeBirthRow, CharacterNameRow, ControlRow, CountRow, IdRow, SceneStateRow, SessionPlayerRow } from '../types.js';
+import type { Candidate } from '../services/reviewer.js';
+
+type TurnCharacter = { id?: string; name: string; system_prompt?: string; [key: string]: unknown };
+
+type ProviderSlug = 'mock' | 'ollama' | 'openai' | 'gemini';
+type ReviewerProvider = 'openai' | 'ollama' | 'stub';
+
+interface TurnRequestBody {
+  session_id: string;
+  player_text: string;
+  scene_context?: unknown;
+  characters: TurnCharacter[];
+  provider?: ProviderSlug;
+  model?: string;
+  mature?: boolean;
+  tweakMode?: TweakMode;
+  useRag?: boolean;
+  reviewer_provider?: ReviewerProvider;
+  reviewer_model?: string;
+  style_short?: boolean;
+  use_responses?: boolean;
+}
+
+type RagDoc = { id: string; source: string; title?: string; text: string; occurred_at?: number | null };
 
 export const router = Router();
 
-router.post('/turn', async (req, res) => {
-  const { session_id, player_text, scene_context, characters, provider, model, mature, tweakMode, useRag, reviewer_provider, reviewer_model, style_short, use_responses } = req.body || {};
+router.post('/turn', async (req: Request<unknown, unknown, TurnRequestBody, { debug?: string }>, res: Response) => {
+  const { session_id, player_text, scene_context, characters, provider, model, mature, tweakMode, useRag, reviewer_provider, reviewer_model, style_short, use_responses } = (req.body ?? {}) as TurnRequestBody;
+  const characterList: TurnCharacter[] = Array.isArray(characters) ? characters : [];
   // Debug short-circuit to validate transport
   try {
-    if (String(req.query?.debug || '') === '1') {
-      const name = (Array.isArray(characters) && characters[0]?.name) || 'Narrator';
+    if (String(req.query.debug ?? '') === '1') {
+      const name = characterList[0]?.name || 'Narrator';
       return res.status(200).json({ turns: [{ speaker: name, text: `(debug) echo: ${String(player_text||'')}`, speak: false }] });
     }
   } catch {}
-  if (!session_id || !player_text || !characters) return res.status(400).json({ error: 'bad_request' });
+  if (!session_id || !player_text || !characterList.length) return res.status(400).json({ error: 'bad_request' });
+  const providerSlug: ProviderSlug = provider ?? 'mock';
+  const reviewerProvider: ReviewerProvider | undefined =
+    reviewer_provider && ['openai', 'ollama', 'stub'].includes(reviewer_provider)
+      ? (reviewer_provider as ReviewerProvider)
+      : undefined;
+
+  // Load session player identity
+  let playerLabel: string | undefined;
+  let playerActingAs: string | null = null;
+  let playerAliases: string[] = [];
+  try {
+    const srow = db
+      .prepare('SELECT player_name, player_character_id FROM sessions WHERE id=?')
+      .get(session_id) as SessionPlayerRow | undefined;
+    const configModule = await import('../config.js');
+    const cfgAliases = Array.isArray(configModule.config.user?.nicknames)
+      ? (configModule.config.user?.nicknames as string[])
+      : [];
+    playerAliases = cfgAliases;
+    if (srow?.player_character_id) {
+      const crow = db
+        .prepare('SELECT name FROM characters WHERE id=?')
+        .get(srow.player_character_id) as CharacterNameRow | undefined;
+      if (crow?.name) {
+        playerLabel = srow.player_name || crow.name;
+        playerActingAs = crow.name;
+      }
+    } else if (srow?.player_name) {
+      playerLabel = srow.player_name;
+    } else if (configModule.config.user?.name) {
+      playerLabel = configModule.config.user.name;
+    }
+  } catch {}
 
   // Parse slash commands
   const parsed = parseMessage(player_text);
@@ -32,13 +94,40 @@ router.post('/turn', async (req, res) => {
   db.prepare('INSERT INTO turns VALUES (?,?,?,?,?,?,?,?)')
     .run(playerTurnId, session_id, 'player', 'player', parsed.remainder || player_text, null, Date.now(), JSON.stringify({ commands: parsed.commands }));
   let playerFinal = parsed.remainder || player_text;
-  // Load ages/birth years for mentioned characters
-  const ages: Record<string, number|null> = {};
-  const enriched: any[] = [];
+  // Filter out player-controlled characters from NPC list to avoid conflicts
+  let filteredCharacters = [...characterList];
   try {
-    if (Array.isArray(characters)) {
-      for (const c of characters) {
-        const row = db.prepare('SELECT age, birth_year FROM characters WHERE name=?').get(c.name);
+    const ctrl = db
+      .prepare('SELECT character_id FROM session_control WHERE session_id=? AND controller=?')
+      .all(session_id, 'player') as ControlRow[];
+    const ids = new Set<string>(ctrl.map((r) => String(r.character_id)));
+    const srow = db
+      .prepare('SELECT player_character_id FROM sessions WHERE id=?')
+      .get(session_id) as SessionPlayerRow | undefined;
+    if (srow?.player_character_id) ids.add(String(srow.player_character_id));
+    if (ids.size) {
+      const names: string[] = [];
+      for (const id of ids) {
+        const n = db.prepare('SELECT name FROM characters WHERE id=?').get(id) as CharacterNameRow | undefined;
+        if (n?.name) names.push(n.name);
+      }
+      const before = filteredCharacters.length;
+      filteredCharacters = filteredCharacters.filter(c => !(ids.has((c as any)?.id) || names.includes(c.name)));
+      if (before !== filteredCharacters.length) {
+        appendTranscript(session_id, `system: Player controls: ${names.join(', ')}. These will not be generated by the model.`);
+      }
+    }
+  } catch {}
+
+  // Load ages/birth years for mentioned characters
+  const ages: Record<string, number | null> = {};
+  const enriched: Array<TurnCharacter & { age: number | null; birth_year: number | null }> = [];
+  try {
+    if (Array.isArray(filteredCharacters)) {
+      for (const c of filteredCharacters) {
+        const row = db
+          .prepare('SELECT age, birth_year FROM characters WHERE name=?')
+          .get(c.name) as AgeBirthRow | undefined;
         ages[c.name] = row?.age ?? null;
         enriched.push({ ...c, age: row?.age ?? null, birth_year: row?.birth_year ?? null });
       }
@@ -60,7 +149,21 @@ router.post('/turn', async (req, res) => {
     appendTranscript(session_id, `system: Tweaked input -> ${playerFinal}`);
   }
   appendTranscript(session_id, `player: ${playerFinal}`);
-  recordUsage(session_id, provider ?? 'mock', 'player', playerFinal);
+  recordUsage(session_id, providerSlug, 'player', playerFinal);
+  // If the player is acting as a character, record their input as that character's memory
+  try {
+    if (playerActingAs) {
+      const now = Date.now();
+      const id = uuid();
+      const text = `Observation: ${String(playerFinal).slice(0,200)}`;
+      const scope = JSON.stringify({ applies_to: [playerActingAs] });
+      const sources = JSON.stringify({ sessionId: session_id, by: 'player' });
+      db.prepare('INSERT INTO memories VALUES (?,?,?,?,?,?,?)')
+        .run(id, playerActingAs, session_id, text, scope, sources, now);
+      const { writeCharacterMemory } = await import('../services/fileIO.js');
+      writeCharacterMemory(playerActingAs, `- ${new Date(now).toISOString()} ${text}`);
+    }
+  } catch {}
 
   // Apply scene command (if any) — update setting and optional time
   for (const c of parsed.commands) {
@@ -76,7 +179,9 @@ router.post('/turn', async (req, res) => {
     }
     if (c.kind === 'addchar') {
       try {
-        const exists = db.prepare('SELECT id FROM characters WHERE name=?').get(c.name);
+        const exists = db
+          .prepare('SELECT id FROM characters WHERE name=?')
+          .get(c.name) as IdRow | undefined;
         let newId = exists?.id;
         if (!newId) {
           const nid = uuid();
@@ -86,9 +191,8 @@ router.post('/turn', async (req, res) => {
         }
         // Create an initial profile doc summarizing from this session transcript end (last ~2KB)
         const fs = await import('fs');
-        const path = await import('path');
-        const tdir = process.env.TRANSCRIPTS_DIR || 'transcripts';
-        const tpath = path.join(tdir, `${session_id}.md`);
+        const { transcriptPathFor } = await import('../services/paths.js');
+        const tpath = transcriptPathFor(session_id);
         let context = '';
         try { const txt = fs.readFileSync(tpath, 'utf-8'); context = txt.slice(-2000); } catch {}
         const { openaiJson } = await import('../providers/openai/json.js');
@@ -107,16 +211,15 @@ router.post('/turn', async (req, res) => {
     }
     if (c.kind === 'charupdate') {
       try {
-        const targetName = c.name || (Array.isArray(characters) && characters[0]?.name) || 'Unknown';
-        const row = db.prepare('SELECT id FROM characters WHERE name=?').get(targetName);
+        const targetName = c.name || characterList[0]?.name || 'Unknown';
+        const row = db.prepare('SELECT id FROM characters WHERE name=?').get(targetName) as IdRow | undefined;
         if (row?.id) {
           const fs = await import('fs');
-          const path = await import('path');
           const base = process.env.PROFILES_DIR || 'profiles';
           const dir = path.join(base, row.id, 'docs', 'updates');
           fs.mkdirSync(dir, { recursive: true });
-          const tdir = process.env.TRANSCRIPTS_DIR || 'transcripts';
-          const tpath = path.join(tdir, `${session_id}.md`);
+          const { transcriptPathFor } = await import('../services/paths.js');
+          const tpath = transcriptPathFor(session_id);
           let excerpt = '';
           try { const txt = fs.readFileSync(tpath, 'utf-8'); excerpt = txt.slice(-2000); } catch {}
           const now = new Date().toISOString().replace(/[:.]/g,'-');
@@ -130,31 +233,99 @@ router.post('/turn', async (req, res) => {
 
   // Optional facts + RAG: facts (meta.json) + reviewer-selected snippets → extra context
   let extraContext: string | undefined;
+  // Build cadence-aware prompt context: include generic/short prompts every 5 player turns
+  let includePromptHints = true;
+  let includeProfileExcerpt = false; // Only on session start or via /reseed
+  try {
+    const countRow = db
+      .prepare('SELECT COUNT(1) as c FROM turns WHERE session_id=? AND role=?')
+      .get(session_id, 'player') as CountRow | undefined;
+    const count = Number(countRow?.c ?? 0);
+    // Include on 1st, 6th, 11th... player turns
+    includePromptHints = !Number.isFinite(count) ? true : ((count % 5) === 1);
+    // Long profile excerpt only on the first player turn of a session
+    includeProfileExcerpt = !Number.isFinite(count) ? true : (count === 1);
+  } catch {}
+  // Slash command: /reseed prompts|profile|all to force injection
+  if (parsed.commands.some(c => c.kind === 'reseed')) {
+    const cmd = parsed.commands.find(c => c.kind === 'reseed') as any;
+    const tgt = (cmd?.target || 'all') as 'prompts'|'profile'|'all';
+    if (tgt === 'prompts' || tgt === 'all') includePromptHints = true;
+    if (tgt === 'profile' || tgt === 'all') includeProfileExcerpt = true;
+  }
+  if (Array.isArray(enriched) && enriched.length > 0 && includePromptHints) {
+    try {
+      const row = db
+        .prepare('SELECT id FROM characters WHERE name=?')
+        .get(enriched[0].name) as IdRow | undefined;
+      const charId = row?.id;
+      const { loadGenericGuidelinesFor, loadShortPrompts, renderGuidelinesBlock, renderCharacterBriefs } = await import('../services/prompts.js');
+      const guide = renderGuidelinesBlock(loadGenericGuidelinesFor(charId));
+      const briefs = renderCharacterBriefs(loadShortPrompts(enriched));
+      const blocks = [guide, briefs].filter(Boolean).join('\n\n');
+      if (blocks) extraContext = blocks;
+      // Add compact profile excerpt only at session start or when forced by /reseed
+      if (charId) {
+        const { profileDirFor } = await import('../services/paths.js');
+        const fs = await import('fs');
+        const root = profileDirFor(charId);
+        const p = path.join(root, 'profile.md');
+        if (includeProfileExcerpt && fs.existsSync(p)) {
+          const prof = fs.readFileSync(p, 'utf-8');
+          const excerpt = prof.slice(0, 1800);
+          extraContext = (extraContext ? extraContext + '\n\n' : '') + `Profile Excerpt (for initial grounding):\n${excerpt}`;
+        }
+      }
+    } catch {}
+  }
   try {
     if (useRag && Array.isArray(enriched) && enriched.length > 0) {
-      const charIdRow = db.prepare('SELECT id FROM characters WHERE name=?').get(enriched[0].name);
+      const charIdRow = db
+        .prepare('SELECT id FROM characters WHERE name=?')
+        .get(enriched[0].name) as IdRow | undefined;
       if (charIdRow?.id) {
         const { scoreDocs } = await import('../services/rag.js');
         const { reviewerSelect, getReviewerCache, setReviewerCache } = await import('../services/reviewer.js');
         const { loadFacts } = await import('../services/meta.js');
-        const docs: any[] = [];
+        const docs: RagDoc[] = [];
         const fs = await import('fs');
-        const path = await import('path');
         const profiles = process.env.PROFILES_DIR || 'profiles';
         const pdir = path.join(profiles, charIdRow.id);
         const pushDoc = (id: string, title: string, text: string) => { if (text?.trim()) docs.push({ id, source: title, title, text }); };
         try { const p = path.join(pdir, 'profile.md'); if (fs.existsSync(p)) pushDoc('profile', 'profile', fs.readFileSync(p, 'utf-8')); } catch {}
         try { const t = path.join(pdir, 'timeline.md'); if (fs.existsSync(t)) pushDoc('timeline', 'timeline', fs.readFileSync(t, 'utf-8')); } catch {}
         try { const ddir = path.join(pdir, 'docs'); if (fs.existsSync(ddir)) for (const f of fs.readdirSync(ddir)) if (/\.(md|txt)$/i.test(f)) pushDoc(`doc:${f}`, f, fs.readFileSync(path.join(ddir, f), 'utf-8')); } catch {}
-        try { const mems = db.prepare('SELECT text FROM memories WHERE character_id=? ORDER BY created_at DESC LIMIT 200').all(enriched[0].name); for (let i=0;i<mems.length;i++) pushDoc(`mem:${i}`, 'memory', String(mems[i].text||'')); } catch {}
-        const scored = scoreDocs(String(playerFinal), docs).slice(0,5);
-        let selectedIds = getReviewerCache(session_id);
+        try {
+          const mems = db
+            .prepare('SELECT text FROM memories WHERE character_id=? ORDER BY created_at DESC LIMIT 200')
+            .all(enriched[0].name) as Array<{ text: string }>;
+          for (let i = 0; i < mems.length; i++) {
+            pushDoc(`mem:${i}`, 'memory', String(mems[i].text || ''));
+          }
+        } catch {}
+        const scored = scoreDocs(String(playerFinal), docs).slice(0, 5);
+        // Invalidate reviewer cache on cadence or when /reseed is used
+        const reseed = parsed.commands.some(c => c.kind === 'reseed');
+        let selectedIds: string[] | null = (includePromptHints || reseed) ? null : getReviewerCache(session_id);
         if (!selectedIds) {
-          const review = await reviewerSelect({ reviewer_provider, reviewer_model, x_provider_key: (req as any).providerKey, candidates: scored, style_short });
-          selectedIds = review.selected?.length ? review.selected : scored.slice(0,3).map((d:any)=>d.id);
-          setReviewerCache(session_id, selectedIds);
+          const candidatePayload: Candidate[] = scored.map((d) => ({
+            id: d.id,
+            text: d.text,
+            score: d.score,
+            occurred_at: d.occurred_at ?? null,
+          }));
+          const review = await reviewerSelect({
+            character_id: charIdRow.id,
+            reviewer_provider: reviewerProvider,
+            reviewer_model,
+            x_provider_key: (req as any).providerKey,
+            candidates: candidatePayload,
+            style_short,
+          });
+          selectedIds = review.selected?.length ? review.selected : scored.slice(0, 3).map((d) => d.id);
+          if (selectedIds) setReviewerCache(session_id, selectedIds);
         }
-        const selected = scored.filter((d:any)=> selectedIds?.includes(d.id));
+        const selected = scored.filter((d) => selectedIds?.includes(d.id));
         const facts = loadFacts(charIdRow.id) || { name: enriched[0].name } as any;
         const style = (style_short || facts?.reviewer_hints?.prefer_brief) ? "\nGuidelines: Keep replies brief (1–3 short sentences). Avoid long paragraphs." : '';
         const factsLine = `Facts: name=${facts.name}`
@@ -164,7 +335,8 @@ router.post('/turn', async (req, res) => {
           + (facts.birth_year!=null? `; birth_year=${facts.birth_year}`:'')
           + (facts.story_start? `; story_start=${facts.story_start}`:'');
         const snips = selected.map((d:any) => `- [${d.source}] ${d.title||''}\n${String(d.text).slice(0,500)}`).join('\n\n');
-        extraContext = factsLine + '\n' + snips + style;
+        const ragBlock = factsLine + '\n' + snips + style;
+        extraContext = extraContext ? `${extraContext}\n\n${ragBlock}` : ragBlock;
       }
     }
   } catch {}
@@ -173,17 +345,52 @@ router.post('/turn', async (req, res) => {
   // Determine narrative time from scene_state if available
   let narrativeIso: string | undefined;
   try {
-    const row = db.prepare('SELECT current_json FROM scene_state WHERE session_id=? ORDER BY updated_at DESC LIMIT 1').get(session_id);
-    if (row) {
+    const row = db
+      .prepare('SELECT current_json FROM scene_state WHERE session_id=? ORDER BY updated_at DESC LIMIT 1')
+      .get(session_id) as SceneStateRow | undefined;
+    if (row?.current_json) {
       const cur = JSON.parse(row.current_json);
       if (cur?.time) narrativeIso = cur.time;
     }
   } catch {}
-  const charListForModel = enriched.length ? enriched : characters;
-  const validNames = Array.isArray(charListForModel) ? charListForModel.map((c:any)=>c.name) : [];
+  const charListForModel: TurnCharacter[] = enriched.length ? enriched : filteredCharacters;
+  const charactersForModel: LlmCharacter[] = charListForModel.map((c) => ({
+    ...c,
+    system_prompt: typeof c.system_prompt === 'string' ? c.system_prompt : `You are ${c.name}.`,
+  }));
+  // Append explicit control rule when multiple characters are player-controlled
+  try {
+    const ctrl = db
+      .prepare('SELECT character_id FROM session_control WHERE session_id=? AND controller=?')
+      .all(session_id, 'player') as ControlRow[];
+    const ids = new Set<string>(ctrl.map((r) => String(r.character_id)));
+    if (ids.size > 1) {
+      const names: string[] = [];
+      for (const id of ids) {
+        const n = db.prepare('SELECT name FROM characters WHERE id=?').get(id) as CharacterNameRow | undefined;
+        if (n?.name) names.push(n.name);
+      }
+      if (names.length > 1) extraContext = (extraContext ? extraContext + '\n\n' : '') + `Do not generate turns for: ${names.join(', ')} (player-controlled).`;
+    }
+  } catch {}
+  const validNames = charListForModel.map((c) => c.name);
   let npc: any;
   try {
-    npc = await llmTurn({ provider: provider ?? 'mock', scene_context, characters: charListForModel, player_text: playerFinal, providerKey: (req as any).providerKey, model, mature, narrativeTimeIso: narrativeIso, extraContext, useResponses: !!use_responses || String(process.env.OPENAI_USE_RESPONSES||'').toLowerCase()==='true' });
+    npc = await llmTurn({
+      provider: providerSlug,
+      scene_context,
+      characters: charactersForModel,
+      player_text: playerFinal,
+      providerKey: (req as any).providerKey,
+      model,
+      mature,
+      narrativeTimeIso: narrativeIso,
+      extraContext,
+      useResponses: !!use_responses || String(process.env.OPENAI_USE_RESPONSES || '').toLowerCase() === 'true',
+      playerLabel,
+      playerActingAs,
+      playerAliases,
+    });
   } catch (e: any) {
     const msg = e?.message || String(e) || 'LLM error';
     appendTranscript(session_id, `system: Error calling model: ${msg}`);
@@ -213,13 +420,13 @@ router.post('/turn', async (req, res) => {
   if (npcTurns.length === 0) {
     appendTranscript(session_id, `system: Model returned no turns; using fallback.`);
   }
-  for (const t of (npcTurns.length ? npcTurns : [{ speaker: (Array.isArray(charListForModel) && charListForModel[0]?.name) || 'Narrator', text: '…', speak: false }])) {
+  for (const t of (npcTurns.length ? npcTurns : [{ speaker: charListForModel[0]?.name || 'Narrator', text: '…', speak: false }])) {
     const speaker = normalizeSpeaker(t.speaker);
     const id = uuid();
     db.prepare('INSERT INTO turns VALUES (?,?,?,?,?,?,?,?)')
       .run(id, session_id, 'npc', speaker, t.text, null, Date.now(), JSON.stringify({ emotion: t.emotion ?? null }));
     appendTranscript(session_id, `${speaker}: ${t.text}`);
-    recordUsage(session_id, provider ?? 'mock', 'npc', t.text);
+    recordUsage(session_id, providerSlug, 'npc', t.text);
     out.push({ speaker, text: t.text, speak: t.speak !== false });
   }
 
@@ -227,7 +434,7 @@ router.post('/turn', async (req, res) => {
   extractAndStoreMemories(session_id, out);
   // Add rough timeline events for each NPC reply (placeholder)
   out.forEach(t => addEvent({ scope: 'character', ownerId: t.speaker, title: 'Said something', summary: t.text.slice(0,120), participants: [t.speaker, 'player'], sources: { session_id } }));
-  snapshotTurn(session_id, playerTurnId, { characters, provider });
+  snapshotTurn(session_id, playerTurnId, { characters: characterList, provider: providerSlug });
 
   try {
     const payload = JSON.stringify({ turns: out });

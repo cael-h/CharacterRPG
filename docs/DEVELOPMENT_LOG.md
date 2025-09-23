@@ -83,9 +83,9 @@ Notes / Next steps:
 
 ## 2025-09-10
 - Loader and session stability
-  - Fixed here‑string misuse that swallowed API responses; switched to piping/explicit here‑string into Python for JSON printing.
+  - Fixed here-string misuse that swallowed API responses; switched to piping/explicit here-string into Python for JSON printing.
   - Added HTTP status/body length diagnostics; removed once stable via `DEBUG_PRINT=0`.
-  - Made session creation and turn flow resilient to non‑JSON model output; explicit errors replace silent `…` fallbacks.
+  - Made session creation and turn flow resilient to non-JSON model output; explicit errors replace silent `…` fallbacks.
 - Provider toggles and key handling
   - Clean split between server `.env` (secrets + infra) and loader `scripts/olive.config` (per‑run, non‑secret defaults).
   - Loader no longer imports `.env`; BYOK header only sent when `PROVIDER_KEY` is explicitly set in the config.
@@ -106,6 +106,13 @@ Notes / Next steps:
 
 Open issues / follow‑ups
 - Playground key input: add optional `X-Provider-Key` field to avoid relying on `.env` during browser tests.
-- Reviewer prompt improvements: contradiction detection, ask‑to‑clarify signal plumbing.
+- Reviewer prompt improvements: contradiction detection, ask-to-clarify signal plumbing.
 - Gemini adapter (text) parity with OpenAI + Responses pathway.
 - Unit tests: adapters (OpenAI/Responses), loader parser, RAG scoring, reviewer selection.
+
+## 2025-09-23
+- Replaced the compiled `dist/` workflow with direct TypeScript execution (`node --import tsx ./src/index.ts`); build now runs `tsc --noEmit` and the runtime stays in sync with sources.
+- Added `server/src/types.ts` and refactored all routes/services (characters, sessions, convo, stories, providers, RAG, prompts, exports, seeds, timeline, etc.) to use typed SQLite result structs—no more implicit `any` under strict mode.
+- Hardened the CLI (`crpg` + `server/src/cli.ts`) with new diagnostics (`--diagnose`, `--no-server`), larger HTTP timeouts, and typed fetch helpers; importer diagnostics now reuse shared scan logic in `services/importDebug.ts`.
+- Bumped the HTTP curl timeouts in `crpg` (10s max, 2s connect) to fix the “No characters found” race caused by short `curl` deadlines; `CRPG_SERVER_CMD` env var selects `npm run start` vs `dev`.
+- Added type-safe adapters for Ollama/OpenAI reviewers, ensuring diagnostics and RAG reviewer flows use shared Candidate types; `npm run build` passes with full `strict` settings.
