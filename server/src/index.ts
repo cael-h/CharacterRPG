@@ -12,19 +12,23 @@ import { router as exportRouter } from './routes/exports.js';
 import { router as docsRouter } from './routes/docs.js';
 import { router as ragRouter } from './routes/rag.js';
 import { router as providersRouter } from './routes/providers.js';
-import { importSeeds, importFromDocs } from './services/seeds.js';
+import { router as promptsRouter } from './routes/prompts.js';
+import { router as debugRouter } from './routes/debug.js';
+import { router as storiesRouter } from './routes/stories.js';
+import { importSeeds, importFromDocs, importFromProfiles } from './services/seeds.js';
+import { config } from './config.js';
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
 app.use(cors());
 app.use(stripSensitiveHeaders());
 
-// Ensure storage directories exist
-const UPLOADS_DIR = process.env.UPLOADS_DIR || 'uploads';
-const TRANSCRIPTS_DIR = process.env.TRANSCRIPTS_DIR || 'transcripts';
-const MEMORIES_DIR = process.env.MEMORIES_DIR || 'memories';
-const TIMELINES_DIR = process.env.TIMELINES_DIR || 'timelines';
-const PROFILES_DIR = process.env.PROFILES_DIR || 'profiles';
+// Ensure storage directories exist (from config.json)
+const UPLOADS_DIR = config.dirs.uploads;
+const TRANSCRIPTS_DIR = config.dirs.transcripts;
+const MEMORIES_DIR = config.dirs.memories;
+const TIMELINES_DIR = config.dirs.timelines;
+const PROFILES_DIR = config.dirs.profiles;
 [UPLOADS_DIR, TRANSCRIPTS_DIR, MEMORIES_DIR, TIMELINES_DIR, PROFILES_DIR].forEach((p) => {
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
 });
@@ -41,10 +45,13 @@ app.use('/playground', express.static(path.resolve('public')));
 app.use('/api/characters', characterRouter);
 app.use('/api/sessions', sessionRouter);
 app.use('/api/convo', convoRouter);
+app.use('/api/stories', storiesRouter);
 app.use('/api/exports', exportRouter);
 app.use('/api/characters/:id/docs', docsRouter);
+app.use('/api/characters/:id/prompt', promptsRouter);
 app.use('/api/rag', ragRouter);
 app.use('/api/providers', providersRouter);
+app.use('/api/debug', debugRouter);
 
 // Asset upload (avatars)
 const upload = multer({ limits: { fileSize: 5 * 1024 * 1024 } });
@@ -63,10 +70,11 @@ app.post('/api/assets/upload', upload.single('file'), async (req, res) => {
   res.json({ uri: `/uploads/avatars/${filename}` });
 });
 
-const port = Number(process.env.PORT || 4000);
+const port = Number(config.port || 4000);
 // Import seeds on boot (if any)
 try { importSeeds(); } catch {}
 try { importFromDocs(); } catch {}
+try { if (config.flags.autoImportProfiles) importFromProfiles(); } catch {}
 app.listen(port, () => {
   console.log('Server listening on', port);
 });

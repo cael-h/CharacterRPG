@@ -90,24 +90,38 @@ async function multiSelect(title: string, items: string[], initiallyChecked: Set
 }
 
 async function getCharacters(): Promise<Character[]> {
-  const r = await fetch(`${BASE}/api/characters`).then(r => r.json());
-  return r;
+  const res = await fetch(`${BASE}/api/characters`);
+  if (!res.ok) throw new Error(`characters request failed (${res.status})`);
+  const data = (await res.json()) as unknown;
+  if (!Array.isArray(data)) return [];
+  return data.filter((c): c is Character => typeof c?.id === 'string' && typeof c?.name === 'string');
 }
 
 async function addCharacter(name: string, system_prompt: string) {
   await fetch(`${BASE}/api/characters`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name, system_prompt }) });
 }
 
-async function startSession(provider: string, participants: { id: string }[]) {
-  const r = await fetch(`${BASE}/api/sessions`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ title: 'CLI', provider, participants }) }).then(r=>r.json());
-  return r.id as string;
+interface SessionResponse { id?: string }
+
+async function startSession(provider: string, participants: { id: string }[]): Promise<string> {
+  const res = await fetch(`${BASE}/api/sessions`, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ title: 'CLI', provider, participants })
+  });
+  if (!res.ok) throw new Error(`session create failed (${res.status})`);
+  const data = (await res.json()) as SessionResponse;
+  if (!data.id) throw new Error('session id missing');
+  return data.id;
 }
 
 async function endSession(id: string) {
   await fetch(`${BASE}/api/sessions/${id}/end`, { method:'POST' });
 }
 
-async function sendTurn(opts: { session_id: string; text: string; provider: string; model?: string; mature?: boolean; tweakMode?: 'off'|'suggest'|'auto'; chars: Character[]; }) {
+type Turn = { speaker: string; text: string };
+
+async function sendTurn(opts: { session_id: string; text: string; provider: string; model?: string; mature?: boolean; tweakMode?: 'off'|'suggest'|'auto'; chars: Character[]; }): Promise<Turn[]> {
   const body = {
     session_id: opts.session_id,
     player_text: opts.text,
@@ -118,8 +132,14 @@ async function sendTurn(opts: { session_id: string; text: string; provider: stri
     mature: opts.mature,
     tweakMode: opts.tweakMode || 'off',
   };
-  const r = await fetch(`${BASE}/api/convo/turn`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }).then(r=>r.json());
-  return (r.turns || []) as Array<{ speaker: string; text: string }>;
+  const res = await fetch(`${BASE}/api/convo/turn`, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error(`turn failed (${res.status})`);
+  const data = (await res.json()) as { turns?: Turn[] };
+  return Array.isArray(data.turns) ? data.turns : [];
 }
 
 async function main() {
@@ -168,11 +188,11 @@ async function main() {
   console.log('Type messages. Commands: /end to end session, /exit to quit.');
 
   const i = rl();
-  const prompt = () => i.setPrompt('> ') && i.prompt();
+  const prompt = () => { i.setPrompt('> '); i.prompt(); };
   i.on('line', async (line) => {
     const text = line.trim();
-    if (!text) return prompt();
-    if (text === '/end') { await endSession(sessionId); console.log('Session ended.'); return prompt(); }
+    if (!text) { prompt(); return; }
+    if (text === '/end') { await endSession(sessionId); console.log('Session ended.'); prompt(); return; }
     if (text === '/exit') { await endSession(sessionId).catch(()=>{}); i.close(); return; }
     console.log(`You: ${text}`);
     try {

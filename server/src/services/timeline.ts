@@ -1,17 +1,20 @@
 import { db } from '../db.js';
 import { randomUUID as uuid } from 'crypto';
-import { addTimelineEvent } from './fileIO.js';
+import { addTimelineEvent, addStoryTimelineEvent } from './fileIO.js';
+import type { TimelineIdRow } from '../types.js';
 
-export function ensureTimeline(scope: 'global' | 'character', ownerId: string | null) {
-  const row = db.prepare('SELECT * FROM timelines WHERE scope=? AND owner_id IS ?').get(scope, ownerId);
+export function ensureTimeline(scope: 'global' | 'character' | 'story', ownerId: string | null) {
+  const row = db
+    .prepare('SELECT id FROM timelines WHERE scope=? AND owner_id IS ?')
+    .get(scope, ownerId) as TimelineIdRow | undefined;
   if (!row) {
     db.prepare('INSERT INTO timelines VALUES (?,?,?,?,?)').run(uuid(), scope, ownerId, Date.now(), Date.now());
   }
 }
 
 export function addEvent(opts: {
-  scope: 'global' | 'character';
-  ownerId: string | null; // null for global
+  scope: 'global' | 'character' | 'story';
+  ownerId: string | null; // null for global; storyId for story
   occurredAt?: number;
   title: string;
   summary: string;
@@ -20,7 +23,10 @@ export function addEvent(opts: {
   sources?: any;
 }) {
   ensureTimeline(opts.scope, opts.ownerId ?? null);
-  const trow = db.prepare('SELECT id FROM timelines WHERE scope=? AND owner_id IS ?').get(opts.scope, opts.ownerId ?? null);
+  const trow = db
+    .prepare('SELECT id FROM timelines WHERE scope=? AND owner_id IS ?')
+    .get(opts.scope, opts.ownerId ?? null) as TimelineIdRow | undefined;
+  if (!trow) throw new Error('timeline_not_found');
   const id = uuid();
   const now = Date.now();
   const occurred = opts.occurredAt ?? now;
@@ -36,6 +42,9 @@ export function addEvent(opts: {
       JSON.stringify(opts.sources ?? {}),
       now
     );
-  addTimelineEvent(opts.ownerId ?? 'global', opts.title, opts.summary);
+  if (opts.scope === 'story' && opts.ownerId) {
+    try { addStoryTimelineEvent(opts.ownerId, opts.title, opts.summary, new Date(occurred).toISOString()); } catch {}
+  } else {
+    addTimelineEvent(opts.ownerId ?? 'global', opts.title, opts.summary);
+  }
 }
-

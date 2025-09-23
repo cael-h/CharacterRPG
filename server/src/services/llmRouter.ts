@@ -1,17 +1,20 @@
 import { mockTurn } from '../providers/mock/text.js';
 
-type Character = { id?: string; name: string; system_prompt: string; age?: number|null; birth_year?: number|null };
+export type LlmCharacter = { id?: string; name: string; system_prompt: string; age?: number | null; birth_year?: number | null };
 
 type Args = {
   provider: 'openai' | 'gemini' | 'mock' | 'ollama',
   scene_context: any,
-  characters: Character[],
+  characters: LlmCharacter[],
   player_text: string,
   providerKey?: string,
   model?: string,
   mature?: boolean,
   extraContext?: string,
   useResponses?: boolean,
+  playerLabel?: string,
+  playerActingAs?: string | null,
+  playerAliases?: string[],
 };
 
 function ageAtTime(birthYear?: number|null, iso?: string) {
@@ -22,7 +25,15 @@ function ageAtTime(birthYear?: number|null, iso?: string) {
   } catch { return null; }
 }
 
-const systemHeader = (chars: Character[], mature?: boolean, narrativeTimeIso?: string, extraContext?: string) => {
+const systemHeader = (
+  chars: LlmCharacter[],
+  mature?: boolean,
+  narrativeTimeIso?: string,
+  extraContext?: string,
+  playerLabel?: string,
+  playerActingAs?: string | null,
+  playerAliases?: string[]
+) => {
   const withAges = chars.map(c => {
     const a = c.age ?? ageAtTime(c.birth_year ?? null, narrativeTimeIso);
     return a != null ? `${c.name} (${a})` : c.name;
@@ -37,12 +48,20 @@ const systemHeader = (chars: Character[], mature?: boolean, narrativeTimeIso?: s
   const matureNote = mature
     ? `You may use mature language if in-character. Do not include sexual content involving minors. Avoid illegal content.`
     : `Keep language PG-13; avoid explicit sexual content.`;
+  const playerLine = playerLabel
+    ? (playerActingAs
+        ? `The human player is ${playerLabel}, speaking as ${playerActingAs}. Do not generate turns for ${playerActingAs}; only other characters reply.`
+        : `The human player is ${playerLabel}. Address them as appropriate. Do not generate a turn for the player.`)
+    : undefined;
+  const aliasLine = (playerAliases && playerAliases.length)
+    ? `Player may be referred to as: ${playerAliases.join(', ')}.`
+    : undefined;
   const ctx = extraContext ? `\nContext (use if helpful):\n${extraContext}` : '';
-  return `${base}\n${jsonRule}\n${matureNote}${ctx}`;
+  return `${base}\n${jsonRule}\n${matureNote}${playerLine? '\n'+playerLine : ''}${aliasLine? '\n'+aliasLine : ''}${ctx}`;
 };
 
 export async function llmTurn(a: Args & { narrativeTimeIso?: string }) {
-  const sys = systemHeader(a.characters, a.mature, a.narrativeTimeIso, a.extraContext);
+  const sys = systemHeader(a.characters, a.mature, a.narrativeTimeIso, a.extraContext, a.playerLabel, a.playerActingAs, a.playerAliases);
   const user = a.player_text;
   if (a.provider === 'ollama') {
     const { ollamaTurn } = await import('../providers/ollama/text.js');
