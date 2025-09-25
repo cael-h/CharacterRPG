@@ -1,0 +1,15 @@
+{
+  "port": 4000,
+  "dirs": {
+    "uploads": "uploads",
+    "transcripts": "transcripts",
+    "memories": "memories",
+    "timelines": "timelines",
+    "profiles": "profiles",
+    "profilesDropin": "character_profiles"
+  },
+  "flags": {
+    "autoImportProfiles": true,
+    "syncCharacterBundles": true
+  }
+}
