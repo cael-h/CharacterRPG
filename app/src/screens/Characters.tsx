@@ -7,6 +7,7 @@ export default function Characters() {
   const [name, setName] = useState('Olive');
   const [systemPrompt, setSystemPrompt] = useState('You are Olive.');
   const [age, setAge] = useState('');
+  const [profileUrl, setProfileUrl] = useState('');
 
   const load = async () => {
     try {
@@ -35,6 +36,9 @@ export default function Characters() {
                 <Text style={{fontWeight:'600'}}>{item.name}</Text>
                 <Text>{isSel ? 'Selected' : 'Tap to select'}</Text>
               </View>
+              {item.profile_uri ? (
+                <Text style={{color:'#666'}}>Profile: {item.profile_uri}</Text>
+              ) : null}
             </TouchableOpacity>
           );
         }}
@@ -45,6 +49,19 @@ export default function Characters() {
         <TextInput value={systemPrompt} onChangeText={setSystemPrompt} placeholder="System prompt" style={{borderWidth:1, borderColor:'#ccc', padding:8, borderRadius:6, marginVertical:6}} />
         <TextInput value={age} onChangeText={setAge} placeholder="Age (optional)" keyboardType="numeric" style={{borderWidth:1, borderColor:'#ccc', padding:8, borderRadius:6, marginVertical:6}} />
         <Button title="Create" onPress={create} />
+      </View>
+      <View style={{marginTop:16}}>
+        <Text style={{fontWeight:'600'}}>Set Profile URL (for selected character)</Text>
+        <TextInput value={profileUrl} onChangeText={setProfileUrl} placeholder="e.g., /uploads/profiles/Olive.pdf"
+          style={{borderWidth:1, borderColor:'#ccc', padding:8, borderRadius:6, marginVertical:6}} />
+        <Button title="Attach" onPress={async ()=>{
+          if (!selected[0]) return;
+          await fetch(`${apiBase}/api/characters/${selected[0]}`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ profile_uri: profileUrl }) });
+          setProfileUrl('');
+          // refresh
+          try { const rows = await fetch(`${apiBase}/api/characters`).then(r=>r.json()); set({ characters: rows }); } catch {}
+        }} />
+        <Text style={{color:'#666', marginTop:6}}>Place your PDF at server/uploads/profiles/<Name>.pdf and set the URL like above.</Text>
       </View>
     </View>
   );

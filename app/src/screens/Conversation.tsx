@@ -5,6 +5,10 @@ import { useStore, modelToOllamaId } from '../store/useStore';
 export default function Conversation() {
   const { apiBase, provider, model, customOllamaModel, mature, tweakMode, sessionId, characters, selected, turns, set, pushTurn, startSession, incUsage } = useStore();
   const [text, setText] = useState('');
+  const [useRag, setUseRag] = useState(true);
+  const [reviewProv, setReviewProv] = useState<'mock'|'openai'|'ollama'>('openai');
+  const [reviewModel, setReviewModel] = useState('gpt-5-mini');
+  const [short, setShort] = useState(true);
 
   const send = async () => {
     if (!text.trim()) return;
@@ -14,7 +18,7 @@ export default function Conversation() {
       const r = await fetch(`${apiBase}/api/convo/turn`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, player_text: text, scene_context: {}, characters: characters.filter(c=>selected.includes(c.id)).map(c=>({name:c.name, system_prompt:c.system_prompt||''})), provider, model: provider==='ollama' ? modelToOllamaId(model as any, customOllamaModel) : model, mature, tweakMode })
+        body: JSON.stringify({ session_id: sessionId, player_text: text, scene_context: {}, characters: characters.filter(c=>selected.includes(c.id)).map(c=>({name:c.name, system_prompt:c.system_prompt||''})), provider, model: provider==='ollama' ? modelToOllamaId(model as any, customOllamaModel) : model, mature, tweakMode, useRag, reviewer_provider: reviewProv, reviewer_model: reviewModel, style_short: short })
       }).then(r=>r.json());
       incUsage(model, 'in', Math.max(1, Math.round(text.length/4)));
       r.turns?.forEach((t:any)=> {
@@ -32,6 +36,17 @@ export default function Conversation() {
       <View style={{flexDirection:'row', justifyContent:'space-between', marginBottom:8}}>
         <Text>Provider: {provider}</Text>
         <Text>Model: {model}</Text>
+      </View>
+
+      <View style={{flexDirection:'row', alignItems:'center', marginBottom:8}}>
+        <Text>RAG:</Text>
+        <Button title={useRag ? 'On' : 'Off'} onPress={()=>setUseRag(!useRag)} />
+        <View style={{width:8}} />
+        <Button title={`Reviewer: ${reviewProv}`} onPress={()=> setReviewProv(reviewProv==='openai'?'ollama':reviewProv==='ollama'?'mock':'openai')} />
+        <View style={{width:8}} />
+        <TextInput value={reviewModel} onChangeText={setReviewModel} placeholder="reviewer model" style={{flex:1, borderWidth:1, borderColor:'#ccc', borderRadius:6, padding:6}} />
+        <View style={{width:8}} />
+        <Button title={short? 'Short ✓':'Short ✗'} onPress={()=>setShort(!short)} />
       </View>
       <View style={{flex:1}}>
         {turns.map((t, i)=> (
