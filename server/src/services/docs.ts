@@ -1,11 +1,13 @@
 import fs from 'fs';
 import path from 'path';
+import { profileDirFor } from './paths.js';
+import { config } from '../config.js';
 
 function ensureDir(p: string) { if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); }
 
 export function docsDirFor(characterId: string) {
-  const base = process.env.PROFILES_DIR || 'profiles';
-  const dir = path.join(base, characterId, 'docs');
+  const root = profileDirFor(characterId);
+  const dir = path.join(root, 'docs');
   ensureDir(dir);
   return dir;
 }
@@ -30,4 +32,3 @@ export function pathForDoc(characterId: string, filename: string) {
   const dir = docsDirFor(characterId);
   return path.join(dir, filename);
 }
-
