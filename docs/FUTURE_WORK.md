@@ -42,3 +42,8 @@ This document captures aspirational features to inform current architecture with
 - Keep the conversation layer independent: text/logic separate from rendering.
 - Use capability detection: if timings/visemes are present, enhance; otherwise degrade gracefully.
 - Make all avatar/background features user-optional with sensible defaults.
+## Retrieval & Search (Future Experiments)
+- Swap heuristic TF-IDF with hybrid retrieval (BM25 + embeddings) when deps/network allow.
+- Add optional agentic search for the main chat and reviewer (multi-hop queries over profile/docs/memories); hide behind a latency budget.
+- Consider caching and pre-computing embeddings per character bundle; background refresh when docs change.
+- Explore lightweight conflict resolution heuristics vs. LLM-based consolidation for reviewer step.
