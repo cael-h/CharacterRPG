@@ -22,7 +22,7 @@ type State = {
   openaiKey?: string;
   geminiKey?: string;
   sessionId?: string;
-  characters: { id: string; name: string; avatar_uri?: string; system_prompt?: string }[];
+  characters: { id: string; name: string; avatar_uri?: string; profile_uri?: string; system_prompt?: string }[];
   selected: string[];
   turns: Turn[];
   usage: Usage;
