@@ -6,4 +6,7 @@ Thumbs.db
 
 # Do not commit local env files
 server/.env
+server/config.json
 
+# Windows ADS artifacts (Mark-of-the-Web)
+*:[Zz]one.Identifier*
