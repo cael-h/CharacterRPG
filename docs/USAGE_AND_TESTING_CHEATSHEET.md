@@ -26,6 +26,14 @@ curl -s http://localhost:4000/api/characters | jq
 curl -sX POST http://localhost:4000/api/characters/<CHAR_ID>/save-profile | jq
 ```
 
+## 2b) Import Characters from character_profiles/ (drop-in bundles)
+- Create a folder per character under `character_profiles/` (see `docs/PROFILES_LAYOUT.md`).
+- Import on demand:
+```
+curl -sX POST http://localhost:4000/api/characters/import-from-profiles | jq
+```
+- Optional: set `autoImportProfiles: true` in `server/config.json` to auto-import on boot.
+
 ## 4) OpenAI Key (BYOK)
 Server secret lives in `server/.env`. For per-run override, pass a header (the loader supports `PROVIDER_KEY` in `scripts/olive.config`).
 Option A (server secret): add to `server/.env` then restart server
@@ -123,10 +131,12 @@ curl -sX POST http://localhost:4000/api/rag/review \
   -H 'Content-Type: application/json' \
   -d '{"reviewer_provider":"openai","reviewer_model":"gpt-4o-mini","x_provider_key":"YOUR_OPENAI_KEY","candidates":[]}' | jq
 
-## 13) Config Split: .env vs scripts/olive.config
-- `.env` (server): secrets + infra defaults only
-  - `OPENAI_API_KEY`, `OPENAI_BASE`, `OPENAI_USE_RESPONSES`
-  - `PORT`, `PROFILES_DIR`, `TRANSCRIPTS_DIR`, `MEMORIES_DIR`, `TIMELINES_DIR`
+## 13) Config Split: config.json vs .env vs scripts/olive.config
+- `server/config.json` (server): non-sensitive options
+  - `port`, directory paths (`uploads`, `transcripts`, `memories`, `timelines`, `profiles`)
+  - flags: `autoImportProfiles`, `syncCharacterBundles`
+- `.env` (server): secrets only (API keys/endpoints)
+  - `OPENAI_API_KEY`, `OPENAI_BASE`, `OPENAI_USE_RESPONSES`, etc.
 - `scripts/olive.config` (loader): non-secret per-run behavior
   - `PROVIDER`, `MODEL`, `USE_RAG`, `USE_RESPONSES`, `STYLE_SHORT`, `CH_NAME`, `SHORT`, `LONG_MD`, `PROVIDER_KEY` (optional)
 
@@ -145,3 +155,35 @@ npm run kill:4000   # uses lsof/fuser to kill the listener
 # or choose another port
 PORT=4100 npm run dev
 ```
+
+## Prompt Editor API
+List, read, and update per-character prompts.
+```
+# List
+curl -s http://localhost:4000/api/characters/<CHAR_ID>/prompt | jq
+
+# Read short.md
+curl -s http://localhost:4000/api/characters/<CHAR_ID>/prompt/short.md
+
+# Update reviewer.md
+curl -sX PUT http://localhost:4000/api/characters/<CHAR_ID>/prompt/reviewer.md \
+  -H 'Content-Type: application/json' -d '{"content":"You are the reviewer..."}' | jq
+
+# Bulk refresh generic.md (uses profiles/Default/generic.md, falls back to docs)
+curl -sX POST http://localhost:4000/api/characters/refresh-generic | jq
+```
+
+## Verbose Backend Mode
+Prints backend actions (prompt injections, RAG scoring, reviewer picks) to console and transcript as `system:` lines.
+```
+cd server
+VERBOSE=1 npm run dev
+```
+
+## Runtime Slash Commands
+Use inside your next player message to force context refresh this turn:
+- `/reseed prompts` — inject generic guidelines + character briefs
+- `/reseed profile` — inject long profile excerpt once
+- `/reseed all` — both
+
+Note: If `character_profiles/Default/generic.md` is missing (and the docs fallback is also missing), the server will add a stub and warn on the first session turn.
