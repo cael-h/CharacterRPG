@@ -10,3 +10,4 @@ server/config.json
 
 # Windows ADS artifacts (Mark-of-the-Web)
 *:[Zz]one.Identifier*
+server/.env
