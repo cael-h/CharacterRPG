@@ -1,0 +1,25 @@
+{
+  "name": "character-rpg-app",
+  "version": "0.1.0",
+  "description": "React Native companion app for CharacterRPG",
+  "main": "index.js",
+  "scripts": {
+    "android": "react-native run-android",
+    "ios": "react-native run-ios",
+    "start": "react-native start"
+  },
+  "keywords": ["character", "rpg", "react-native"],
+  "author": "Kyle",
+  "license": "MIT",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "react": "18.2.0",
+    "react-native": "0.75.2",
+    "zustand": "4.5.2"
+  },
+  "devDependencies": {
+    "@types/react": "18.2.37",
+    "typescript": "5.4.5"
+  }
+}

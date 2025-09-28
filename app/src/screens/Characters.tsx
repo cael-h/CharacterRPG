@@ -7,7 +7,10 @@ export default function Characters() {
   const [name, setName] = useState('Olive');
   const [systemPrompt, setSystemPrompt] = useState('You are Olive.');
   const [age, setAge] = useState('');
+<<<<<<< HEAD
   const [profileUrl, setProfileUrl] = useState('');
+=======
+>>>>>>> 6592229df14f2c8e73dc251dab1748a39fb567a2
 
   const load = async () => {
     try {

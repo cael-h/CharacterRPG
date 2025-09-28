@@ -1,18 +1,29 @@
 import React, { useState } from 'react';
+<<<<<<< HEAD
 import { View, Text, TextInput, Button, Switch, Alert } from 'react-native';
 import { useStore } from '../store/useStore';
 
 export default function Settings() {
   const { apiBase, provider, model, mature, customOllamaModel, tweakMode, set } = useStore();
+=======
+import { View, Text, TextInput, Button, Switch } from 'react-native';
+import { useStore, modelToOllamaId } from '../store/useStore';
+
+export default function Settings() {
+  const { provider, model, mature, customOllamaModel, tweakMode, set } = useStore();
+>>>>>>> 6592229df14f2c8e73dc251dab1748a39fb567a2
   const [prov, setProv] = useState(provider);
   const [mdl, setMdl] = useState(model);
   const [autoSwitch, setAutoSwitch] = useState(true);
   const [matureLang, setMatureLang] = useState(mature);
   const [customModel, setCustomModel] = useState(customOllamaModel || '');
   const [tweak, setTweak] = useState<'off'|'suggest'|'auto'>(tweakMode);
+<<<<<<< HEAD
   const [useRag, setUseRag] = useState(true);
   const [reviewProv, setReviewProv] = useState<'mock'|'openai'|'ollama'>(prov==='ollama'?'ollama':'openai');
   const [reviewModel, setReviewModel] = useState('gpt-5-mini');
+=======
+>>>>>>> 6592229df14f2c8e73dc251dab1748a39fb567a2
 
   return (
     <View style={{flex:1, padding:12}}>
@@ -32,6 +43,7 @@ export default function Settings() {
           <View style={{width:8}} />
           <Button title="2.5 Flash-Lite" onPress={()=>setMdl('gemini-2.5-flash-lite' as any)} />
         </View>
+<<<<<<< HEAD
             {prov==='openai' && (
         <View style={{flexDirection:'row', marginVertical:6, flexWrap:'wrap'}}>
           <Button title="gpt-5" onPress={()=>setMdl('gpt-5' as any)} />
@@ -42,6 +54,9 @@ export default function Settings() {
         </View>
       )}
 )}
+=======
+      )}
+>>>>>>> 6592229df14f2c8e73dc251dab1748a39fb567a2
       {prov==='ollama' && (
         <View style={{marginVertical:6}}>
           <View style={{flexDirection:'row', flexWrap:'wrap'}}>
@@ -51,6 +66,7 @@ export default function Settings() {
             <View style={{width:8}} />
             <Button title="Hermes RP 8B" onPress={()=>setMdl('ollama-roleplay-hermes-3-llama-3.1-8b' as any)} />
           </View>
+<<<<<<< HEAD
           <View style={{height:8}} />
           <Button title="Use deepseek-r1:1.5b" onPress={()=>{ setProv('ollama' as any); setCustomModel('deepseek-r1:1.5b'); }} />
           <Text style={{marginTop:8}}>Custom Ollama model (optional)</Text>
@@ -69,6 +85,11 @@ export default function Settings() {
               Alert.alert('Ollama check failed', String(e));
             }
           }} />
+=======
+          <Text style={{marginTop:8}}>Custom Ollama model (optional)</Text>
+          <TextInput value={customModel} onChangeText={setCustomModel} placeholder="e.g., qwen2.5:7b-instruct-q4_0"
+            style={{borderWidth:1, borderColor:'#ccc', padding:8, borderRadius:6, marginTop:6}} />
+>>>>>>> 6592229df14f2c8e73dc251dab1748a39fb567a2
         </View>
       )}
       <View style={{flexDirection:'row', alignItems:'center', marginTop:12}}>
@@ -79,6 +100,7 @@ export default function Settings() {
         <Switch value={matureLang} onValueChange={setMatureLang} />
         <Text style={{marginLeft:8}}>Mature language (in-character)</Text>
       </View>
+<<<<<<< HEAD
 
       <View style={{marginTop:12}}>
         <Text style={{fontWeight:'600'}}>RAG Reviewer</Text>
@@ -93,6 +115,9 @@ export default function Settings() {
         </View>
       </View>
       <View style={{marginTop:12}}>
+=======
+      <View style={{marginTop:12}}>
+>>>>>>> 6592229df14f2c8e73dc251dab1748a39fb567a2
         <Text style={{fontWeight:'600'}}>Prompt Tweaker</Text>
         <View style={{flexDirection:'row', marginTop:6}}>
           <Button title={`Off${tweak==='off'?' ✓':''}`} onPress={()=>setTweak('off')} />
@@ -102,6 +127,7 @@ export default function Settings() {
           <Button title={`Auto-rewrite${tweak==='auto'?' ✓':''}`} onPress={()=>setTweak('auto')} />
         </View>
       </View>
+<<<<<<< HEAD
 
       <View style={{marginTop:12}}>
         <Text style={{fontWeight:'600'}}>RAG Reviewer</Text>
@@ -115,6 +141,8 @@ export default function Settings() {
           <TextInput value={reviewModel} onChangeText={setReviewModel} placeholder="reviewer model (e.g., gpt-5-mini)" style={{flex:1, borderWidth:1, borderColor:'#ccc', padding:8, borderRadius:6}} />
         </View>
       </View>
+=======
+>>>>>>> 6592229df14f2c8e73dc251dab1748a39fb567a2
       <View style={{marginTop:12}}>
         <Button title="Save" onPress={()=> set({ provider: prov as any, model: mdl as any, mature: matureLang, customOllamaModel: customModel, tweakMode: tweak }) } />
       </View>

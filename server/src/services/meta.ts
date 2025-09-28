@@ -1,6 +1,9 @@
 import fs from 'fs';
 import path from 'path';
+<<<<<<< HEAD
 import { profileDirFor } from './paths.js';
+=======
+>>>>>>> 6592229df14f2c8e73dc251dab1748a39fb567a2
 
 export type CharacterFacts = {
   name: string;
@@ -16,8 +19,13 @@ export type CharacterFacts = {
 };
 
 export function metaPathFor(characterId: string) {
+<<<<<<< HEAD
   const root = profileDirFor(characterId);
   return path.join(root, 'meta.json');
+=======
+  const base = process.env.PROFILES_DIR || 'profiles';
+  return path.join(base, characterId, 'meta.json');
+>>>>>>> 6592229df14f2c8e73dc251dab1748a39fb567a2
 }
 
 export function loadFacts(characterId: string): CharacterFacts | null {
@@ -37,7 +45,11 @@ export function saveFacts(characterId: string, facts: CharacterFacts) {
 // Very lightweight rules extractor: scans prompt and docs for simple keys.
 export function extractFactsRules(characterId: string, name: string): CharacterFacts {
   const base = process.env.PROFILES_DIR || 'profiles';
+<<<<<<< HEAD
   const root = profileDirFor(characterId);
+=======
+  const root = path.join(base, characterId);
+>>>>>>> 6592229df14f2c8e73dc251dab1748a39fb567a2
   const facts: CharacterFacts = {
     name,
     reviewer_hints: { prefer_brief: true },

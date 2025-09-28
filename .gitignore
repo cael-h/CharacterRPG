@@ -6,8 +6,15 @@ Thumbs.db
 
 # Do not commit local env files
 server/.env
+<<<<<<< HEAD
 server/config.json
 
 # Windows ADS artifacts (Mark-of-the-Web)
 *:[Zz]one.Identifier*
 server/.env
+=======
+
+>>>>>>> 6592229df14f2c8e73dc251dab1748a39fb567a2
+server/node_modules/
+app/node_modules/
+node_modules/

@@ -18,7 +18,11 @@ export default function Conversation() {
       const r = await fetch(`${apiBase}/api/convo/turn`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+<<<<<<< HEAD
         body: JSON.stringify({ session_id: sessionId, player_text: text, scene_context: {}, characters: characters.filter(c=>selected.includes(c.id)).map(c=>({name:c.name, system_prompt:c.system_prompt||''})), provider, model: provider==='ollama' ? modelToOllamaId(model as any, customOllamaModel) : model, mature, tweakMode, useRag, reviewer_provider: reviewProv, reviewer_model: reviewModel, style_short: short })
+=======
+        body: JSON.stringify({ session_id: sessionId, player_text: text, scene_context: {}, characters: characters.filter(c=>selected.includes(c.id)).map(c=>({name:c.name, system_prompt:c.system_prompt||''})), provider, model: provider==='ollama' ? modelToOllamaId(model as any, customOllamaModel) : model, mature, tweakMode })
+>>>>>>> 6592229df14f2c8e73dc251dab1748a39fb567a2
       }).then(r=>r.json());
       incUsage(model, 'in', Math.max(1, Math.round(text.length/4)));
       r.turns?.forEach((t:any)=> {

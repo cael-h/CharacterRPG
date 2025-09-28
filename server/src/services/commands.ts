@@ -3,8 +3,12 @@ export type ParsedCommand =
   | { kind: 'npc'; name: string; text: string }
   | { kind: 'scene'; text: string }
   | { kind: 'addchar'; name: string; note?: string }
+<<<<<<< HEAD
   | { kind: 'charupdate'; name?: string; note?: string }
   | { kind: 'reseed'; target?: 'prompts'|'profile'|'all' };
+=======
+  | { kind: 'charupdate'; name?: string; note?: string };
+>>>>>>> 6592229df14f2c8e73dc251dab1748a39fb567a2
 
 export type ParsedMessage = {
   commands: ParsedCommand[];
@@ -53,6 +57,7 @@ export function parseMessage(input: string): ParsedMessage {
       const m = firstLine.match(/^\/charupdate(?:\s+([^\s].*?))?(?:\s+-\s*(.*))?$/i);
       if (m) { commands.push({ kind: 'charupdate', name: m[1]?.trim(), note: m[2]?.trim() }); rest = after; continue; }
     }
+<<<<<<< HEAD
     // /reseed [prompts|profile|all]
     if (/^\/reseed\b/i.test(firstLine) || /^\/reread\b/i.test(firstLine)) {
       const m = firstLine.match(/^\/(?:reseed|reread)(?:\s+(prompts|profile|all))?$/i);
@@ -61,6 +66,8 @@ export function parseMessage(input: string): ParsedMessage {
       rest = after;
       continue;
     }
+=======
+>>>>>>> 6592229df14f2c8e73dc251dab1748a39fb567a2
     // Not a recognized command; break to avoid infinite loop
     break;
   }

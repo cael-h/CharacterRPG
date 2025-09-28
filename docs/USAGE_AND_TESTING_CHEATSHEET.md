@@ -26,6 +26,7 @@ curl -s http://localhost:4000/api/characters | jq
 curl -sX POST http://localhost:4000/api/characters/<CHAR_ID>/save-profile | jq
 ```
 
+<<<<<<< HEAD
 ## 2b) Import Characters from character_profiles/ (drop-in bundles)
 - Create a folder per character under `character_profiles/` (see `docs/PROFILES_LAYOUT.md`).
 - Import on demand:
@@ -34,6 +35,8 @@ curl -sX POST http://localhost:4000/api/characters/import-from-profiles | jq
 ```
 - Optional: set `autoImportProfiles: true` in `server/config.json` to auto-import on boot.
 
+=======
+>>>>>>> 6592229df14f2c8e73dc251dab1748a39fb567a2
 ## 4) OpenAI Key (BYOK)
 Server secret lives in `server/.env`. For per-run override, pass a header (the loader supports `PROVIDER_KEY` in `scripts/olive.config`).
 Option A (server secret): add to `server/.env` then restart server
@@ -131,12 +134,19 @@ curl -sX POST http://localhost:4000/api/rag/review \
   -H 'Content-Type: application/json' \
   -d '{"reviewer_provider":"openai","reviewer_model":"gpt-4o-mini","x_provider_key":"YOUR_OPENAI_KEY","candidates":[]}' | jq
 
+<<<<<<< HEAD
 ## 13) Config Split: config.json vs .env vs scripts/olive.config
 - `server/config.json` (server): non-sensitive options
   - `port`, directory paths (`uploads`, `transcripts`, `memories`, `timelines`, `profiles`)
   - flags: `autoImportProfiles`, `syncCharacterBundles`
 - `.env` (server): secrets only (API keys/endpoints)
   - `OPENAI_API_KEY`, `OPENAI_BASE`, `OPENAI_USE_RESPONSES`, etc.
+=======
+## 13) Config Split: .env vs scripts/olive.config
+- `.env` (server): secrets + infra defaults only
+  - `OPENAI_API_KEY`, `OPENAI_BASE`, `OPENAI_USE_RESPONSES`
+  - `PORT`, `PROFILES_DIR`, `TRANSCRIPTS_DIR`, `MEMORIES_DIR`, `TIMELINES_DIR`
+>>>>>>> 6592229df14f2c8e73dc251dab1748a39fb567a2
 - `scripts/olive.config` (loader): non-secret per-run behavior
   - `PROVIDER`, `MODEL`, `USE_RAG`, `USE_RESPONSES`, `STYLE_SHORT`, `CH_NAME`, `SHORT`, `LONG_MD`, `PROVIDER_KEY` (optional)
 
@@ -155,6 +165,7 @@ npm run kill:4000   # uses lsof/fuser to kill the listener
 # or choose another port
 PORT=4100 npm run dev
 ```
+<<<<<<< HEAD
 
 ## Prompt Editor API
 List, read, and update per-character prompts.
@@ -187,3 +198,5 @@ Use inside your next player message to force context refresh this turn:
 - `/reseed all` — both
 
 Note: If `character_profiles/Default/generic.md` is missing (and the docs fallback is also missing), the server will add a stub and warn on the first session turn.
+=======
+>>>>>>> 6592229df14f2c8e73dc251dab1748a39fb567a2
