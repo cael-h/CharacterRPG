@@ -26,7 +26,8 @@ Stories
 
 RAG inputs
 - Profile bundle (profile.md + prompt/* + docs/* + timeline.md) and recent memories.
+- Multi-tier Responses API search agent (prompt cache, file-search over transcripts/memories, long-term lore via MCP connectors) prepares candidate snippets with cost/latency telemetry.
 - Reviewer selects a small set of snippets; result is appended to the system context.
 
 Config
-- `server/config.json` sets dirs, flags, and `user` defaults (name, nicknames, defaultPlayer).
+- `server/config.json` sets dirs, flags, and `user` defaults (name, nicknames, defaultPlayer, default provider=`openai`, default model=`gpt-5-mini`).

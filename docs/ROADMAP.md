@@ -9,7 +9,7 @@ Phased plan based on extracted goals. Dates TBD after initial review.
 
 ## P0.5 — BYOK + Usage Tracking
 - Add secure key storage on device; key validation flow.
-- Add provider/model selectors; default Gemini (2.5 Flash) with Flash‑Lite toggle.
+- Add provider/model selectors; default OpenAI (`gpt-5-mini`) with quick switch to `gpt-5-nano`; leave Gemini presets in the menu but off by default until adapters are ready.
 - Implement local Usage Tracker with per-model counters and reset heuristics.
 - Add Settings for limit-hit policy (auto-switch/prompt/paid) and cost ceilings.
 - Acceptance: Keys required before calls; UI shows model + free/paid state; counters increment realistically; limit-hit prompts work.
@@ -33,20 +33,25 @@ Phased plan based on extracted goals. Dates TBD after initial review.
 - Implement Memory Extractor; persist to per-NPC files and `memories` table with provenance and deduplication.
 - Acceptance: New durable facts appear in memory files; cross-NPC references work.
 
-### P1.4 — Running Setting Doc
+### P1.4 — Retrieval Agent (Responses API)
+- Build the OpenAI Responses-powered search agent (prompt cache + file-search + long-term lore) with telemetry and budget controls.
+- Wire LangGraph-style orchestration for plan/execute/aggregate into `/api/convo/turn` so reviewers receive curated snippets.
+- Acceptance: NPC responses pull consistent lore with measurable latency/cost; usage tracker displays retrieval spend.
+
+### P1.5 — Running Setting Doc
 - Implement Setting Manager; keep session-scoped setting document and `scene_state.current_json`; handle time continuity heuristics.
 - Acceptance: Setting reflects locations/participants/time after each turn; can be exported.
 
-### P1.5 — Snapshot/Rewind
+### P1.6 — Snapshot/Rewind
 - Create turn-level snapshots; add restore/regenerate flow.
 - Acceptance: Can rewind to earlier turn and branch safely.
 
-### P1.6 — TTS Output (non-Live)
+### P1.7 — TTS Output (non-Live)
 - Add TTS Router on server; synthesize full-turn audio when enabled; attach audio URLs in responses.
 - Conversation UI: play audio while still showing text; retain transcript.
 - Acceptance: NPC speech audio works with policy switches; counters/costs tracked.
 
-### P1.7 — Timelines
+### P1.8 — Timelines
 - Add Timeline Manager; write concise events to global and per-character timelines; export markdown views.
 - Acceptance: Events appear with timestamps, participants, and links to turns; per-character timelines reflect knowledge when they learn events later.
 

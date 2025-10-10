@@ -17,6 +17,7 @@ Source: Extracted from `docs/Conversations_with_GPT/rpg-voice-app-architecture-a
 - STT (optional): endpoints to transcribe voice input when not using provider “Live/Realtime”.
 - Realtime/Live (optional): stubs for WebRTC (OpenAI Realtime) and Gemini Live behind a feature toggle.
 - Secrets: API keys stored on server; client only talks to own server.
+- Retrieval/search agent: orchestrate a multi-tier retrieval pipeline (prompt cache, episodic memories, long-term archives) using OpenAI Responses API tools (search/file-search/browser) with budget controls, and support optional AgentKit connectors for sanctioned external sources.
 
 ### Memory, Setting, Commands, and Control (new)
 - Per-NPC memories: maintain a concise, structured memory file for each NPC (e.g., `memories/<characterId>.md|json`) updated in real time; allow entries that apply to multiple NPCs without duplication.
@@ -28,7 +29,7 @@ Source: Extracted from `docs/Conversations_with_GPT/rpg-voice-app-architecture-a
  - Timelines: maintain an overall story timeline and per‑character timelines capturing brief, high‑signal events (what, who, where, when). Per‑character timelines reflect what that character knows; update when they learn about events later.
 
 ### Provider/Model selection & usage controls (new)
-- Default provider: Gemini. Default model: `gemini-2.5-flash`. Alternative: `gemini-2.5-flash-lite` (quick switch).
+- Default provider: OpenAI. Default model: `gpt-5-mini`. Quick switch: `gpt-5-nano`. Gemini 2.5 Flash/Flash-Lite stay available as alternate presets.
 - Local OSS option: `provider=ollama` with presets for Qwen2.5‑7B‑Instruct, Llama‑3.1‑8B‑Instruct, Roleplay‑Hermes‑3 (Llama‑3.1‑8B), and a custom model input.
 - UI: clear indicator of active provider/model; one-tap toggle between available models.
 - Free vs paid state per model: show badge/state (Free OK / Rate-limited / Over free cap / Paid).
@@ -79,6 +80,7 @@ Source: Extracted from `docs/Conversations_with_GPT/rpg-voice-app-architecture-a
 - STT partials/backchannels: treat “uh‑huh/yeah/sorry/continue” as backchannel, not full interrupt.
 - Audio overlap: duck/unduck instead of hard cancel; only cancel on sustained intent.
 - Session continuity: store Continuation Capsules with TTL and drop rules (topic change, time elapsed).
+- Search cost control: Responses API tool calls must emit telemetry so usage tracker can show retrieval spend separate from text generation.
 - Image handling: reject unsupported types; downscale large uploads; cache-bust on updates; handle offline avatar display.
  - Multi-speaker voice scenes: even for audio-first replies, the server tags each NPC turn with `speaker`, so the transcript shows the correct name and avatar.
  - Emotion tagging: LLM generates an `emotion` hint for NPC turns (e.g., neutral, amused, worried); stored in `turns.meta_json` for future avatar animation; ignored if absent.

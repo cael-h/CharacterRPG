@@ -47,10 +47,10 @@ Source: Derived from the architecture doc and transcript.
 - Decision: Require user-supplied API keys; block provider calls without a key.
 - Consequences: Simpler compliance; onboarding friction; must build key UX and secure storage.
 
-## D10: Default to Gemini (2.5 Flash)
-- Context: Access to free-tier usage for casual play; fast responses.
-- Decision: Default provider/model is Gemini 2.5 Flash; quick switch to Flash‑Lite.
-- Consequences: Lower cost for casual usage; need usage tracking and graceful fallback.
+## D10: Default to OpenAI GPT‑5 Mini
+- Context: We want to integrate OpenAI first and take advantage of the new low-cost GPT‑5 family for testing.
+- Decision: Default provider/model is `openai` / `gpt-5-mini`; quick switch to `gpt-5-nano`. Gemini 2.5 Flash remains the secondary preset once its adapters are wired.
+- Consequences: Immediate coverage for OpenAI-specific features (Apps SDK, AgentKit) while keeping a cheaper fallback. Requires careful budget controls until Gemini free tiers are reintroduced.
 
 ## D11: Local usage metering with server assist
 - Context: Providers don’t expose “remaining free quota” directly.

@@ -18,11 +18,20 @@ Note: This is the detailed plan for review. No code will be implemented until yo
 - Add SQLite DB module and create tables (characters, sessions, turns, capsules).
 - Characters API: list/create minimal fields.
 - Sessions API: create and end sessions.
-- LLM Router: adapter interface; OpenAI and Gemini implementations; enforce JSON response; retries/fallbacks.
+- LLM Router: adapter interface; implement OpenAI (`gpt-5-mini` default, `gpt-5-nano` fallback) first, then add Gemini; enforce JSON response; retries/fallbacks.
 - Clause Chunker + Capsules: split by punctuation, store tail, TTL/drop rules, courtesy prompt cooldowns.
 - Convo API: `POST /api/convo/turn` persists player turn, calls LLM, persists NPC turns, returns structured payload (text only in P1).
 - Logging: minimal request/response logs (no secrets); error handling.
 - BYOK transit: accept `X-Provider` (`gemini|openai`) and `X-Provider-Key` headers; use only for that request; never persist.
+
+### 2b) Retrieval & Search Agent (Responses API)
+- Wrap the OpenAI Responses API hosted tools (`web-search`, `file-search`, `browser`, `code_interpreter`) behind a `services/searchAgent.ts` module that accepts structured retrieval plans.
+- Implement a three-tier context pipeline:
+  1. Prompt cache for recent turns (Responses API prompt caching).
+  2. Episodic memories via file-search over transcripts/memory files.
+  3. Long-term lore/timelines indexed via MCP connectors or markdown snapshots.
+- Instrument tool calls with latency/cost telemetry so the usage tracker can surface retrieval spend separate from generation.
+- Integrate the search agent into the RAG path for `/api/convo/turn`, using a LangGraph-style controller to plan → execute → aggregate snippets before reviewer/LLM calls.
 
 ### 2a) Assets: Avatars
 - Endpoint: `POST /api/assets/upload` (multipart/form-data). Validate content-type (PNG/JPEG/WebP), < 5 MB, max 2048x2048; strip EXIF.
@@ -47,8 +56,8 @@ Acceptance
 - Server applies directives and updates transcript files and setting doc.
 
 ### 3a) BYOK & Model Selection
-- Secure key storage (RN Keychain) for `OPENAI_API_KEY` and `GEMINI_API_KEY`.
-- Provider/model selector UI with defaults: `gemini` + `2.5 flash`; quick toggle to `2.5 flash‑lite`.
+- Secure key storage (RN Keychain) for `OPENAI_API_KEY`, `OPENAI_SECONDARY_KEY` (optional), and `GEMINI_API_KEY`.
+- Provider/model selector UI with defaults: `openai` + `gpt-5-mini`; quick toggle to `gpt-5-nano`; Gemini presets remain available but start disabled until adapters are wired.
 - Banner/chips showing active provider/model and free/paid state.
 
 ### 3b) Usage Tracker & Policy
@@ -56,6 +65,7 @@ Acceptance
 - Intercept calls: check policy; on limit-hit, either auto-switch, prompt, or continue (paid) after explicit consent.
 - Rate-limit feedback: parse 429/quota responses; start cooldown timers; show next retry estimate.
 - Cost estimation: price table in app config; multiply by token counts; show running total per model and session.
+- Surface retrieval/tooling spend from the Responses API (search/file-search/browser) alongside generation so players can see total cost per scene.
 
 ### 3c) Avatars
 - Add image picker (camera/gallery) with preview and crop/resize.

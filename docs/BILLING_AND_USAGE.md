@@ -1,12 +1,12 @@
 # Billing, BYOK, and Usage Tracking
 
-This app is BYOK-only (Bring Your Own Key). Each user supplies their own provider API keys; the app never stores keys on the server. Defaults focus on Gemini free-tier usage, with OpenAI supported as paid-only.
+This app is BYOK-only (Bring Your Own Key). Each user supplies their own provider API keys; the app never stores keys on the server. Defaults now target OpenAI’s `gpt-5-mini` for inexpensive, high-quality testing, with Gemini and other providers remaining opt-in alternates.
 
 ## Defaults
-- Provider: `gemini`
-- Model: `gemini-2.5-flash`
-- Quick Switch: `gemini-2.5-flash-lite`
-- OpenAI: supported, but always paid (no standing free tier). You can still set OpenAI keys and select paid models.
+- Provider: `openai`
+- Model: `gpt-5-mini`
+- Quick Switch: `gpt-5-nano`
+- Gemini remains available as an alternate free-tier option; we will re-enable Gemini defaults after OpenAI wiring is stable.
 
 ## Where Keys Live
 - Client: Android Keystore (via RN Keychain). Not synced; removable by clearing app data.
@@ -38,16 +38,15 @@ This app is BYOK-only (Bring Your Own Key). Each user supplies their own provide
 - For models with changing prices, update the table in-app (we’ll store it in config and allow an in-app update with confirmation).
 
 ## OpenAI
-- Paid-only. You can select GPT models (e.g., full/mini/nano variants) and see a running cost estimate.
-- If you prefer, set a hard “max spend per day/month” so the app blocks further OpenAI calls when exceeded.
+- Primary default. `gpt-5-mini` offers strong conversational quality at ~$0.25 / 1M input tokens and $2 / 1M output; `gpt-5-nano` is the budget fallback at ~$0.05 / $0.40.
+- Set a “max spend per day/month” so the app blocks further OpenAI calls when exceeded; Gemini/other providers remain available when you want to avoid paid usage entirely.
 
 ## UX Notes
 - When switching models due to limits, the chat shows a subtle banner (or toast):
-  - “Free cap reached on 2.5 Flash. Switched to 2.5 Flash‑Lite.”
+  - “Daily budget hit on GPT‑5 Mini. Switched to GPT‑5 Nano.”
   - If policy is “Ask each time”, a modal offers: Switch | Keep model (Paid) | Cancel.
 - The header chip always shows: Provider • Model • State (e.g., “Gemini • 2.5 Flash • Free”).
 
 ## Developer Notes
 - We avoid server-stored keys to reduce risk. For server-mediated flows, the server runtime must avoid caching or logging request headers; add middleware to strip/redact `X-Provider-Key`.
 - Usage Tracker is client-first to keep user privacy; optionally mirror anonymized counters server-side for debugging (off by default).
-

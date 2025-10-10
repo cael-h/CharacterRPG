@@ -116,3 +116,23 @@ Open issues / follow‑ups
 - Hardened the CLI (`crpg` + `server/src/cli.ts`) with new diagnostics (`--diagnose`, `--no-server`), larger HTTP timeouts, and typed fetch helpers; importer diagnostics now reuse shared scan logic in `services/importDebug.ts`.
 - Bumped the HTTP curl timeouts in `crpg` (10s max, 2s connect) to fix the “No characters found” race caused by short `curl` deadlines; `CRPG_SERVER_CMD` env var selects `npm run start` vs `dev`.
 - Added type-safe adapters for Ollama/OpenAI reviewers, ensuring diagnostics and RAG reviewer flows use shared Candidate types; `npm run build` passes with full `strict` settings.
+
+## 2025-09-28
+- Cleaned up lingering merge markers in the React Native screens so the Characters, Conversation, and Settings components now reflect the merged feature set (profile URL attach, RAG reviewer controls, Ollama health check) without duplicate blocks.
+- Added an `app/package.json` with the minimal dependencies and scripts so `npm install --prefix app` works out of the box; left out RN type stubs that aren’t published for 0.75 yet.
+- Extended the `crpg` launcher with 60s curl timeouts and a retry helper to wait for `/api/characters`, eliminating the “no characters found” race during startup diagnostics.
+- Removed `server/.env` and every `node_modules` directory from Git, refreshed `.gitignore`, and restored tracked timelines/transcripts to their clean state.
+- Filtered local history to purge earlier `.env` commits; follow-up push used GitHub Desktop’s force-push.
+
+## 2025-10-10
+- Added `docs/STATE_OF_THE_ART.md` capturing OpenAI Dev Day (GPT‑5 family, AgentKit, Apps SDK), new Google Gemini capabilities, and open-source releases relevant to CharacterRPG.
+- Updated defaults across docs to use OpenAI `gpt-5-mini` (quick toggle `gpt-5-nano`) with Gemini noted as the secondary preset once adapters are in place.
+- Refreshed architecture/config notes to mention the new default provider/model and logged the action item to clean merge markers in `docs/USAGE_AND_TESTING_CHEATSHEET.md`.
+- Documented the plan for a Responses API-backed retrieval agent (multi-tier search + telemetry) and slotted it into the roadmap/implementation plan; cleaned up the cheat sheet conflicts and aligned it with the new defaults.
+
+Next session
+============
+- Stand up the Responses API search agent scaffold (prompt cache + file-search) and capture telemetry hooks.
+- Run `npm install --prefix server` and `npm install --prefix app` locally so both environments are ready after the node_modules cleanup, then smoke-test `./crpg`.
+- Implement and validate the OpenAI `gpt-5-mini` / `gpt-5-nano` adapters (Responses + Chat API) end-to-end before re-enabling Gemini presets.
+- Wire up the client usage tracker + BYOK settings UI against the new defaults (avatar work can follow once the adapters pass tests).
