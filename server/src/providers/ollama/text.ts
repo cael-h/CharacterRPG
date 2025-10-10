@@ -37,16 +37,34 @@ export function extractJsonWithTurns(text: string): any | null {
   const cleaned = stripFences(noThink).trim();
   const direct = tryParse(cleaned);
   if (direct) return direct;
-  // Fallback: search for a JSON object containing "turns":
-  const candidates: string[] = [];
-  const re = /\{[\s\S]*?\}/g; // naive object spans; try small ones first
-  const matches = cleaned.match(re) || [];
-  for (const m of matches) {
-    if (m.includes('"turns"')) candidates.push(m);
-  }
-  for (const c of candidates) {
-    const parsed = tryParse(c);
-    if (parsed) return parsed;
+  // Fallback: scan for balanced braces that contain "turns"
+  const len = cleaned.length;
+  const grab = (start: number) => {
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    for (let i = start; i < len; i++) {
+      const ch = cleaned[i];
+      if (escape) { escape = false; continue; }
+      if (ch === '\\') { escape = true; continue; }
+      if (ch === '"') { inString = !inString; continue; }
+      if (inString) continue;
+      if (ch === '{') depth++;
+      else if (ch === '}') {
+        depth--;
+        if (depth === 0) return cleaned.slice(start, i + 1);
+        if (depth < 0) break;
+      }
+    }
+    return '';
+  };
+  for (let i = 0; i < len; i++) {
+    if (cleaned[i] !== '{') continue;
+    const candidate = grab(i);
+    if (candidate && candidate.includes('"turns"')) {
+      const parsed = tryParse(candidate);
+      if (parsed) return parsed;
+    }
   }
   return null;
 }

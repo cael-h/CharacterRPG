@@ -4,7 +4,7 @@ export async function openaiJson(system: string, user: string, model?: string, a
   const key = apiKey || process.env.OPENAI_API_KEY || '';
   if (!key) throw new Error('OpenAI API key missing. Pass X-Provider-Key or set OPENAI_API_KEY.');
   const body = {
-    model: model || process.env.DEFAULT_OPENAI_MODEL || 'gpt-4o-mini',
+    model: model || process.env.DEFAULT_OPENAI_MODEL || 'gpt-5-mini',
     messages: [
       { role: 'system', content: system + ' Always respond with a single JSON object. Do not include explanations.' },
       { role: 'user', content: user }

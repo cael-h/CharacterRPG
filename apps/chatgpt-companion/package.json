@@ -1,0 +1,22 @@
+{
+  "name": "character-companion",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "ChatGPT Companion for CharacterRPG (Apps SDK + MCP).",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "lint": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.2.0",
+    "@openai/apps-sdk": "^0.2.0",
+    "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.15.7",
+    "typescript": "^5.5.4"
+  }
+}

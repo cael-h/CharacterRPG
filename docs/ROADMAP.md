@@ -55,6 +55,11 @@ Phased plan based on extracted goals. Dates TBD after initial review.
 - Add Timeline Manager; write concise events to global and per-character timelines; export markdown views.
 - Acceptance: Events appear with timestamps, participants, and links to turns; per-character timelines reflect knowledge when they learn events later.
 
+### P1.9 — ChatGPT Companion (Apps SDK)
+- Build the Apps SDK MCP companion so CharacterRPG quick actions live inside ChatGPT (dashboard, retrieval telemetry, one-click `/reseed`).
+- Reuse the new Responses search telemetry; expose tools for listing characters, starting sessions, posting turns, and viewing usage.
+- Acceptance: Companion renders in ChatGPT Developer Mode and can start/resume a scene and display current retrieval stats without leaving the chat.
+
 ## P2 — Voice Input (non-Live)
 - STT endpoints and client mic capture.
 - Simple VAD/backchannel detector on client.

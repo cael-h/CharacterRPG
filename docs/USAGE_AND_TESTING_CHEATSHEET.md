@@ -84,6 +84,26 @@ npm run cli -- --rag=true --short=true
 - Pick provider (mock, ollama, openai). For OpenAI, set `OPENAI_API_KEY` in server `.env` or use BYOK header.
 - Space toggles characters; Enter confirms. `/end` to end session; `/exit` to quit.
 
+## 7b) Ollama quick test (reviewer / deepseek)
+- Make sure Ollama is running (`ollama serve`).
+- Export overrides before running `npm run test` or the CLI:
+  ```bash
+  export OLLAMA_BASE=http://127.0.0.1:11434
+  export OLLAMA_MODEL=deepseek-r1:1.5b
+  ```
+- The lightweight JSON parsing regression tests assume `deepseek-r1:1.5b`, which is the only model guaranteed to run on this laptop. Adjust `OLLAMA_MODEL` if you install a different model later.
+
+## 7c) ChatGPT Companion (Apps SDK preview)
+- Scaffold lives in `apps/chatgpt-companion/`.
+- Install deps and run the MCP server (versions may be preview-only; adjust as needed):
+  ```bash
+  cd apps/chatgpt-companion
+  npm install
+  npm run dev
+  ```
+- Launch ChatGPT Developer Mode, register the local companion, and supply your BYOK secret (`openai_key`).
+- Try the tools: `listCharacters`, `startSession`, `sendTurn`, `sessionTelemetry`, `reseedPrompts`.
+
 ## 8) Docs API (attach files to a character)
 Assumes `<CHAR_ID>` from `/api/characters`.
 ```

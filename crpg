@@ -13,15 +13,8 @@ set -euo pipefail
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 SERVER_DIR="$ROOT_DIR/server"
 BASE="${BASE:-http://localhost:4000}"
-<<<<<<< HEAD
-CRPG_MAX_TIME="${CRPG_MAX_TIME:-60}"
-CRPG_CONNECT_TIMEOUT="${CRPG_CONNECT_TIMEOUT:-10}"
-CRPG_RETRIES="${CRPG_RETRIES:-5}"
-CRPG_RETRY_DELAY="${CRPG_RETRY_DELAY:-1}"
-=======
 CRPG_MAX_TIME="${CRPG_MAX_TIME:-10}"
 CRPG_CONNECT_TIMEOUT="${CRPG_CONNECT_TIMEOUT:-2}"
->>>>>>> 6592229df14f2c8e73dc251dab1748a39fb567a2
 CURL="curl -sS --fail --max-time $CRPG_MAX_TIME --connect-timeout $CRPG_CONNECT_TIMEOUT"
 STARTED_BY_CRPG=0
 NO_SERVER=0
@@ -67,26 +60,6 @@ except Exception:
 PY
 }
 
-<<<<<<< HEAD
-fetch_json() {
-  local url="$1"; shift || true
-  local attempts="$CRPG_RETRIES"
-  local delay="$CRPG_RETRY_DELAY"
-  local out
-  local i=0
-  while [ $i -lt "$attempts" ]; do
-    if out=$($CURL "$url" "$@" 2>/dev/null); then
-      printf '%s' "$out"
-      return 0
-    fi
-    i=$((i+1))
-    sleep "$delay"
-  done
-  return 1
-}
-
-list_chars() { fetch_json "$BASE/api/characters" || echo '[]'; }
-=======
 diagnose_local() {
   echo "== Local server config =="
   (
@@ -148,7 +121,6 @@ NODE
     echo "(request failed)"
   fi
 }
->>>>>>> 6592229df14f2c8e73dc251dab1748a39fb567a2
 
 # Safe prompt helper: reads from tty, respects default, never exits on read failure
 ask() {
@@ -161,11 +133,6 @@ ask() {
   if [ -z "${_out}" ]; then printf '%s' "${_def}"; else printf '%s' "${_out}"; fi
 }
 
-<<<<<<< HEAD
-# Diagnose utility
-# (rest of script stays as in conflict-free version – trimmed here for brevity)
-# ...
-=======
 # JSON helpers (stdin): return 0 on condition true
 json_is_empty() {
 python3 - <<'PY'
@@ -592,8 +559,8 @@ SID=$(printf '%s' "$RESP" | json_get id || true)
 [ -z "$SID" ] && echo "Failed to start session: $RESP" >&2 && exit 1
 
 # Provider/model defaults
-PROVIDER="${PROVIDER:-openai}"; MODEL="${MODEL:-gpt-4o-mini}"
-REVIEWER_PROVIDER="${REVIEWER_PROVIDER:-openai}"; REVIEWER_MODEL="${REVIEWER_MODEL:-gpt-5-nano}"; STYLE_SHORT="${STYLE_SHORT:-true}"
+PROVIDER="${PROVIDER:-openai}"; MODEL="${MODEL:-gpt-5-mini}"
+REVIEWER_PROVIDER="${REVIEWER_PROVIDER:-openai}"; REVIEWER_MODEL="${REVIEWER_MODEL:-gpt-5-mini}"; STYLE_SHORT="${STYLE_SHORT:-true}"
 USE_RAG="${USE_RAG:-true}"; USE_RESPONSES="${USE_RESPONSES:-false}"
 URL_TURN="$BASE/api/convo/turn"; [ "${DEBUG_ECHO:-0}" = 1 ] && URL_TURN+="?debug=1"
 
@@ -637,4 +604,3 @@ if [ "$STARTED_BY_CRPG" = "1" ] && [ "$DO_SHUTDOWN" = "1" ]; then
   echo "Shutting down server (port 4000) …" >&2
   ( cd "$SERVER_DIR" && bash scripts/kill-port.sh 4000 ) || true
 fi
->>>>>>> 6592229df14f2c8e73dc251dab1748a39fb567a2

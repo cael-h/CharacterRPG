@@ -4,8 +4,10 @@ import { useStore, modelToOllamaId } from '../store/useStore';
 
 type TurnResponse = { speaker: string; text: string };
 
+type RetrievalMeta = { docCount: number; scoredCount: number; selectedCount: number; durationMs: number; cacheHit: boolean };
 type ApiTurnResponse = {
   turns?: TurnResponse[];
+  meta?: { retrieval?: RetrievalMeta | null };
 };
 
 export default function Conversation() {
@@ -23,7 +25,9 @@ export default function Conversation() {
     set,
     pushTurn,
     startSession,
-    incUsage
+    incUsage,
+    setRetrieval,
+    usage
   } = useStore();
 
   const [text, setText] = useState('');
@@ -61,6 +65,18 @@ export default function Conversation() {
         body: JSON.stringify(body)
       }).then(r => r.json());
 
+      if (response.meta?.retrieval) {
+        const r = response.meta.retrieval;
+        setRetrieval({
+          docCount: r.docCount,
+          selectedCount: r.selectedCount,
+          durationMs: r.durationMs,
+          cacheHit: r.cacheHit,
+        });
+      } else {
+        setRetrieval(undefined);
+      }
+
       incUsage(model, 'in', Math.max(1, Math.round(text.length / 4)));
       response.turns?.forEach(t => {
         pushTurn({ role: 'npc', speaker: t.speaker, text: t.text });
@@ -69,6 +85,7 @@ export default function Conversation() {
     } catch (err) {
       pushTurn({ role: 'npc', speaker: 'System', text: `Error: ${String(err)}` });
       Alert.alert('Send failed', String(err));
+      setRetrieval(undefined);
     }
 
     setText('');
@@ -80,6 +97,11 @@ export default function Conversation() {
         <Text>Provider: {provider}</Text>
         <Text>Model: {model}</Text>
       </View>
+      {usage.retrieval && (
+        <Text style={{ fontSize: 12, color: '#555', marginBottom: 6 }}>
+          Retrieval: {usage.retrieval.selectedCount}/{usage.retrieval.docCount} docs • {usage.retrieval.durationMs} ms {usage.retrieval.cacheHit ? '(cache)' : ''}
+        </Text>
+      )}
 
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
         <Text>RAG:</Text>

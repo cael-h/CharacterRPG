@@ -134,7 +134,7 @@ fi
 
 # Final defaults if still unset
 [ -z "$PROVIDER" ] && PROVIDER="openai"
-[ -z "$MODEL" ] && MODEL="gpt-4o-mini"
+[ -z "$MODEL" ] && MODEL="gpt-5-mini"
 
 # Story selection
 STORY_NAME="${STORY:-}"

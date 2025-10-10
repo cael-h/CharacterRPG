@@ -127,12 +127,15 @@ Open issues / follow‑ups
 ## 2025-10-10
 - Added `docs/STATE_OF_THE_ART.md` capturing OpenAI Dev Day (GPT‑5 family, AgentKit, Apps SDK), new Google Gemini capabilities, and open-source releases relevant to CharacterRPG.
 - Updated defaults across docs to use OpenAI `gpt-5-mini` (quick toggle `gpt-5-nano`) with Gemini noted as the secondary preset once adapters are in place.
-- Refreshed architecture/config notes to mention the new default provider/model and logged the action item to clean merge markers in `docs/USAGE_AND_TESTING_CHEATSHEET.md`.
-- Documented the plan for a Responses API-backed retrieval agent (multi-tier search + telemetry) and slotted it into the roadmap/implementation plan; cleaned up the cheat sheet conflicts and aligned it with the new defaults.
+- Refreshed architecture/config notes to mention the new default provider/model and resolved lingering merge markers in scripts and cheat sheets.
+- Implemented the first-cut Responses API search agent (`server/src/services/searchAgent.ts`) with telemetry logging + reviewer cache integration, swapped `convo` to use it, and started recording retrieval usage alongside generation usage.
+- Changed OpenAI adapters, CLI defaults, and RN store/UI defaults to `gpt-5-mini`/`gpt-5-nano`, and surfaced retrieval telemetry in the Conversation screen.
+- Drafted `docs/CHATGPT_COMPANION.md` and scaffolded `apps/chatgpt-companion/` (MCP server placeholder + package metadata) as the foundation for the ChatGPT Companion Apps SDK project.
+- Apps SDK packages are still preview-only; `npm install` inside `apps/chatgpt-companion/` will fail until OpenAI publishes the beta bits or we point npm at their tarballs (note recorded so we remember next session).
 
 Next session
 ============
-- Stand up the Responses API search agent scaffold (prompt cache + file-search) and capture telemetry hooks.
-- Run `npm install --prefix server` and `npm install --prefix app` locally so both environments are ready after the node_modules cleanup, then smoke-test `./crpg`.
-- Implement and validate the OpenAI `gpt-5-mini` / `gpt-5-nano` adapters (Responses + Chat API) end-to-end before re-enabling Gemini presets.
-- Wire up the client usage tracker + BYOK settings UI against the new defaults (avatar work can follow once the adapters pass tests).
+- Prototype the ChatGPT Companion (Apps SDK + MCP) that surfaces CharacterRPG quick actions inside ChatGPT.
+- Evaluate AgentKit guardrails/Evals for the reviewer + barge-in flows and draft a connector plan for sanctioned external sources.
+- Build a LangGraph proof-of-concept that chains the new search agent, memory writer, and reviewer; exercise it against a small RAG-Gym-style scenario.
+- Extend the client usage tracker to budget retrieval/tool calls alongside token usage (UI controls for auto-switching models based on spend).

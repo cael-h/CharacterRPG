@@ -4,21 +4,21 @@ Curated snapshot of AI capabilities that are directly relevant to CharacterRPG�
 
 ## OpenAI
 
-- **GPT‑5 family (`gpt-5`, `gpt-5-mini`, `gpt-5-nano`)** — New flagship, value, and economy tiers with a shared tool ecosystem (structured output, vision, audio, video, code) and updated pricing that makes `gpt-5-mini` the practical baseline for high-quality RP turns, while `gpt-5-nano` covers budget or fallback use cases. citeturn0search0turn4view0
-- **Responses API built-in tools** — Hosted search, file-search, code interpreter, browser automation, MCP connections, prompt caching, and streaming all land in a single endpoint that we can wrap for context retrieval without standing up extra services. Tool usage is billed per call, so we can budget search-heavy turns separately from generation. citeturn4view0
-- **AgentKit** — Visual agent builder, ChatKit UI components, evaluation harnesses, and the Connector Registry (Google Drive, Slack, Notion, etc.) provide a governed way to expand CharacterRPG’s reviewer or story-runner agents without bespoke orchestration code. citeturn4view0
-- **Apps SDK + MCP** — The Apps SDK (with IDE, CLI, and onboarding guide) lets us publish a CharacterRPG control surface straight into ChatGPT, while its Model Context Protocol compatibility keeps our tooling portable across hosts. citeturn1search0turn1search1turn1search7
+- **GPT‑5 family (`gpt-5`, `gpt-5-mini`, `gpt-5-nano`)** — New flagship, value, and economy tiers with a shared tool ecosystem (structured output, vision, audio, video, code) and updated pricing that makes `gpt-5-mini` the practical baseline for high-quality RP turns, while `gpt-5-nano` covers budget or fallback use cases.
+- **Responses API built-in tools** — Hosted search, file-search, code interpreter, browser automation, MCP connections, prompt caching, and streaming all land in a single endpoint that we can wrap for context retrieval without standing up extra services. Tool usage is billed per call, so we can budget search-heavy turns separately from generation.
+- **AgentKit** — Visual agent builder, ChatKit UI components, evaluation harnesses, and the Connector Registry (Google Drive, Slack, Notion, etc.) provide a governed way to expand CharacterRPG’s reviewer or story-runner agents without bespoke orchestration code.
+- **Apps SDK + MCP** — The Apps SDK (with IDE, CLI, and onboarding guide) lets us publish a CharacterRPG control surface straight into ChatGPT, while its Model Context Protocol compatibility keeps our tooling portable across hosts.
 
 ## Google / Gemini
 
-- **Gemini 2.5 Flash / Flash-Lite / Pro** — 1 million token context windows, adaptive reasoning “thinking” controls, and API pricing that positions Flash-Lite as a low-cost alternative once we re-enable Gemini adapters. citeturn2search4turn2news14
-- **Computer Use & Agent Mode** — Gemini 2.5’s native browser-control (Project Mariner + Agent Mode) enables scripted search or UI automation that could power NPC “research side quests.” citeturn2news12turn2news13
-- **Enterprise & AI Mode discoverability** — Broader enterprise packaging and AI Mode search experiences would let lore or world-bible content surface through Google’s ecosystem if we decide to publish public-facing knowledge bases later. citeturn2news15
+- **Gemini 2.5 Flash / Flash-Lite / Pro** — 1 million token context windows, adaptive reasoning “thinking” controls, and API pricing that positions Flash-Lite as a low-cost alternative once we re-enable Gemini adapters.
+- **Computer Use & Agent Mode** — Gemini 2.5’s native browser-control (Project Mariner + Agent Mode) enables scripted search or UI automation that could power NPC “research side quests.”
+- **Enterprise & AI Mode discoverability** — Broader enterprise packaging and AI Mode search experiences would let lore or world-bible content surface through Google’s ecosystem if we decide to publish public-facing knowledge bases later.
 
 ## Open Source & Research Landscape
 
-- **LangGraph & graph-based orchestration** — LangChain’s LangGraph (and new 101 course) formalize agent state machines, tool-routing, and streaming—useful for building CharacterRPG’s long-running search/memory agents with recoverable checkpoints. citeturn5search6
-- **Agentic Hybrid RAG (AgentFlow, AgentSwift, L‑MARS, RAG-Gym)** — Recent research explores multi-agent planners, look-ahead search, masked search-space pruning, and benchmarking environments; we can cherry-pick tactics like search-budget controllers or look-ahead scoring to improve memory consistency. citeturn5academia12turn5academia13turn5academia14turn5academia15
+- **LangGraph & graph-based orchestration** — LangChain’s LangGraph (and new 101 course) formalize agent state machines, tool-routing, and streaming—useful for building CharacterRPG’s long-running search/memory agents with recoverable checkpoints.
+- **Agentic Hybrid RAG (AgentFlow, AgentSwift, L‑MARS, RAG-Gym)** — Recent research explores multi-agent planners, look-ahead search, masked search-space pruning, and benchmarking environments; we can cherry-pick tactics like search-budget controllers or look-ahead scoring to improve memory consistency.
 
 ## How to Use This Document
 

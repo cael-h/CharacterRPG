@@ -20,7 +20,7 @@ export async function openaiTurn(system: string, user: string, model?: string, a
   if (wantResponses) {
     // Use Responses API
     const body = {
-      model: model || process.env.DEFAULT_OPENAI_MODEL || 'gpt-4o-mini',
+      model: model || process.env.DEFAULT_OPENAI_MODEL || 'gpt-5-mini',
       input: [
         { role: 'system', content: 'Return only the JSON requested; no extra text.' },
         { role: 'user', content: prompt },
@@ -51,7 +51,7 @@ export async function openaiTurn(system: string, user: string, model?: string, a
   } else {
     // Use Chat Completions
     const body = {
-      model: model || process.env.DEFAULT_OPENAI_MODEL || 'gpt-4o-mini',
+      model: model || process.env.DEFAULT_OPENAI_MODEL || 'gpt-5-mini',
       messages: [
         { role: 'system', content: 'Return only the JSON requested; no extra text.' },
         { role: 'user', content: prompt },

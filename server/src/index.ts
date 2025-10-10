@@ -14,6 +14,7 @@ import { router as ragRouter } from './routes/rag.js';
 import { router as providersRouter } from './routes/providers.js';
 import { router as promptsRouter } from './routes/prompts.js';
 import { router as debugRouter } from './routes/debug.js';
+import { router as usageRouter } from './routes/usage.js';
 import { router as storiesRouter } from './routes/stories.js';
 import { importSeeds, importFromDocs, importFromProfiles } from './services/seeds.js';
 import { config } from './config.js';
@@ -52,6 +53,7 @@ app.use('/api/characters/:id/prompt', promptsRouter);
 app.use('/api/rag', ragRouter);
 app.use('/api/providers', providersRouter);
 app.use('/api/debug', debugRouter);
+app.use('/api/usage', usageRouter);
 
 // Asset upload (avatars)
 const upload = multer({ limits: { fileSize: 5 * 1024 * 1024 } });

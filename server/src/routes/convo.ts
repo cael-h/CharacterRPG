@@ -11,10 +11,10 @@ import { snapshotTurn } from '../services/snapshot.js';
 import { parseMessage } from '../services/commands.js';
 import { addEvent } from '../services/timeline.js';
 import { updateSetting } from '../services/setting.js';
-import { recordUsage } from '../services/usage.js';
+import { recordUsage, recordRetrieval } from '../services/usage.js';
 import { tweakUserText, TweakMode } from '../services/tweak.js';
 import type { AgeBirthRow, CharacterNameRow, ControlRow, CountRow, IdRow, SceneStateRow, SessionPlayerRow } from '../types.js';
-import type { Candidate } from '../services/reviewer.js';
+import { runSearchAgent, type SearchTelemetry } from '../services/searchAgent.js';
 
 type TurnCharacter = { id?: string; name: string; system_prompt?: string; [key: string]: unknown };
 
@@ -36,8 +36,6 @@ interface TurnRequestBody {
   style_short?: boolean;
   use_responses?: boolean;
 }
-
-type RagDoc = { id: string; source: string; title?: string; text: string; occurred_at?: number | null };
 
 export const router = Router();
 
@@ -233,6 +231,7 @@ router.post('/turn', async (req: Request<unknown, unknown, TurnRequestBody, { de
 
   // Optional facts + RAG: facts (meta.json) + reviewer-selected snippets → extra context
   let extraContext: string | undefined;
+  let retrievalTelemetry: SearchTelemetry | null = null;
   // Build cadence-aware prompt context: include generic/short prompts every 5 player turns
   let includePromptHints = true;
   let includeProfileExcerpt = false; // Only on session start or via /reseed
@@ -284,59 +283,31 @@ router.post('/turn', async (req: Request<unknown, unknown, TurnRequestBody, { de
         .prepare('SELECT id FROM characters WHERE name=?')
         .get(enriched[0].name) as IdRow | undefined;
       if (charIdRow?.id) {
-        const { scoreDocs } = await import('../services/rag.js');
-        const { reviewerSelect, getReviewerCache, setReviewerCache } = await import('../services/reviewer.js');
-        const { loadFacts } = await import('../services/meta.js');
-        const docs: RagDoc[] = [];
-        const fs = await import('fs');
-        const profiles = process.env.PROFILES_DIR || 'profiles';
-        const pdir = path.join(profiles, charIdRow.id);
-        const pushDoc = (id: string, title: string, text: string) => { if (text?.trim()) docs.push({ id, source: title, title, text }); };
-        try { const p = path.join(pdir, 'profile.md'); if (fs.existsSync(p)) pushDoc('profile', 'profile', fs.readFileSync(p, 'utf-8')); } catch {}
-        try { const t = path.join(pdir, 'timeline.md'); if (fs.existsSync(t)) pushDoc('timeline', 'timeline', fs.readFileSync(t, 'utf-8')); } catch {}
-        try { const ddir = path.join(pdir, 'docs'); if (fs.existsSync(ddir)) for (const f of fs.readdirSync(ddir)) if (/\.(md|txt)$/i.test(f)) pushDoc(`doc:${f}`, f, fs.readFileSync(path.join(ddir, f), 'utf-8')); } catch {}
-        try {
-          const mems = db
-            .prepare('SELECT text FROM memories WHERE character_id=? ORDER BY created_at DESC LIMIT 200')
-            .all(enriched[0].name) as Array<{ text: string }>;
-          for (let i = 0; i < mems.length; i++) {
-            pushDoc(`mem:${i}`, 'memory', String(mems[i].text || ''));
-          }
-        } catch {}
-        const scored = scoreDocs(String(playerFinal), docs).slice(0, 5);
-        // Invalidate reviewer cache on cadence or when /reseed is used
-        const reseed = parsed.commands.some(c => c.kind === 'reseed');
-        let selectedIds: string[] | null = (includePromptHints || reseed) ? null : getReviewerCache(session_id);
-        if (!selectedIds) {
-          const candidatePayload: Candidate[] = scored.map((d) => ({
-            id: d.id,
-            text: d.text,
-            score: d.score,
-            occurred_at: d.occurred_at ?? null,
-          }));
-          const review = await reviewerSelect({
-            character_id: charIdRow.id,
-            reviewer_provider: reviewerProvider,
-            reviewer_model,
-            x_provider_key: (req as any).providerKey,
-            candidates: candidatePayload,
-            style_short,
-          });
-          selectedIds = review.selected?.length ? review.selected : scored.slice(0, 3).map((d) => d.id);
-          if (selectedIds) setReviewerCache(session_id, selectedIds);
+        const result = await runSearchAgent({
+          sessionId: session_id,
+          characterId: charIdRow.id,
+          characterName: enriched[0].name,
+          query: String(playerFinal),
+          styleShort: !!style_short,
+          includePromptHints,
+          reseedTriggered: parsed.commands.some(c => c.kind === 'reseed'),
+          reviewerProvider,
+          reviewerModel: reviewer_model,
+          providerKey: (req as any).providerKey,
+        });
+        if (result?.block) {
+          extraContext = extraContext ? `${extraContext}\n\n${result.block}` : result.block;
         }
-        const selected = scored.filter((d) => selectedIds?.includes(d.id));
-        const facts = loadFacts(charIdRow.id) || { name: enriched[0].name } as any;
-        const style = (style_short || facts?.reviewer_hints?.prefer_brief) ? "\nGuidelines: Keep replies brief (1–3 short sentences). Avoid long paragraphs." : '';
-        const factsLine = `Facts: name=${facts.name}`
-          + (facts.nicknames?.length? `; nicknames=${facts.nicknames.join('/')}`:'')
-          + (facts.aliases?.length? `; aliases=${facts.aliases.join('/')}`:'')
-          + (facts.age!=null? `; age=${facts.age}`:'')
-          + (facts.birth_year!=null? `; birth_year=${facts.birth_year}`:'')
-          + (facts.story_start? `; story_start=${facts.story_start}`:'');
-        const snips = selected.map((d:any) => `- [${d.source}] ${d.title||''}\n${String(d.text).slice(0,500)}`).join('\n\n');
-        const ragBlock = factsLine + '\n' + snips + style;
-        extraContext = extraContext ? `${extraContext}\n\n${ragBlock}` : ragBlock;
+        if (result?.telemetry) {
+          retrievalTelemetry = result.telemetry;
+          recordRetrieval(session_id, providerSlug, {
+            docCount: result.telemetry.docCount,
+            scoredCount: result.telemetry.scoredCount,
+            selectedCount: result.telemetry.selectedCount,
+            durationMs: result.telemetry.totalMs,
+            cacheHit: result.telemetry.cacheHit,
+          });
+        }
       }
     }
   } catch {}
@@ -437,7 +408,21 @@ router.post('/turn', async (req: Request<unknown, unknown, TurnRequestBody, { de
   snapshotTurn(session_id, playerTurnId, { characters: characterList, provider: providerSlug });
 
   try {
-    const payload = JSON.stringify({ turns: out });
+    const payload = JSON.stringify({
+      turns: out,
+      meta: {
+        retrieval: retrievalTelemetry
+          ? {
+              docCount: retrievalTelemetry.docCount,
+              scoredCount: retrievalTelemetry.scoredCount,
+              selectedCount: retrievalTelemetry.selectedCount,
+              durationMs: retrievalTelemetry.totalMs,
+              cacheHit: retrievalTelemetry.cacheHit,
+              tiers: retrievalTelemetry.tiers,
+            }
+          : null,
+      },
+    });
     res.setHeader('Content-Type', 'application/json');
     res.status(200).send(payload);
   } catch (e) {

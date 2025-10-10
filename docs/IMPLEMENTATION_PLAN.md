@@ -113,6 +113,13 @@ Acceptance
 - BYOK guide + usage tracking behavior documented.
 - Avatar support documented and implemented (MVP static images; future talking-avatar notes).
 
+## 10) ChatGPT Companion (Apps SDK + MCP)
+- Scaffold an Apps SDK project under `apps/chatgpt-companion/` with an MCP server that proxies CharacterRPG REST endpoints.
+- Expose tools for `listCharacters`, `sessionTelemetry`, `startSession`, `sendTurn`, `toggleShortReplies`, and `reseedPrompts`.
+- Build companion UI components (dashboard + action footer) that surface retrieval telemetry, key usage metrics, and quick actions.
+- Secure tool calls with transient BYOK headers; support optional Ollama reviewer paths by reading `OLLAMA_BASE` / `OLLAMA_MODEL` (defaulting to `deepseek-r1:1.5b` for local sanity tests).
+- Document the Apps SDK workflow (`docs/CHATGPT_COMPANION.md`) and update the cheat sheet with launch instructions.
+
 ## Dependencies & Install Notes
 - Server: `better-sqlite3`, `express`, `node-fetch`, `dotenv`, `zod`.
 - Client: `react-native`, audio playback/capture modules (to be selected during implementation).

@@ -4,16 +4,19 @@ type Provider = 'gemini' | 'openai' | 'ollama' | 'mock';
 type Model =
   | 'gemini-2.5-flash'
   | 'gemini-2.5-flash-lite'
+  | 'gpt-5'
+  | 'gpt-5-mini'
+  | 'gpt-5-nano'
   | 'ollama-qwen2.5-7b-instruct'
   | 'ollama-llama3.1-8b-instruct'
   | 'ollama-roleplay-hermes-3-llama-3.1-8b'
-  | 'phi-3.5-mini'
   | 'mock';
 
 type Turn = { role: 'player'|'npc'; speaker: string; text: string };
 
 type UsageCounters = { requests: number; inTokens: number; outTokens: number; state: 'free'|'near'|'limited'|'over'|'paid' };
-type Usage = { byModel: Record<string, UsageCounters> };
+type RetrievalStats = { docCount: number; selectedCount: number; durationMs: number; cacheHit: boolean };
+type Usage = { byModel: Record<string, UsageCounters>; retrieval?: RetrievalStats };
 
 type State = {
   apiBase: string;
@@ -33,12 +36,13 @@ type State = {
   pushTurn: (t: Turn) => void;
   startSession: () => Promise<void>;
   incUsage: (model: string, kind: 'in'|'out', tokens: number) => void;
+  setRetrieval: (stats?: RetrievalStats) => void;
 };
 
 export const useStore = create<State>((set, get) => ({
   apiBase: 'http://localhost:4000',
-  provider: 'gemini',
-  model: 'gemini-2.5-flash',
+  provider: 'openai',
+  model: 'gpt-5-mini' as Model,
   characters: [],
   selected: [],
   turns: [],
@@ -59,6 +63,10 @@ export const useStore = create<State>((set, get) => ({
     u.requests += kind==='in'?1:0;
     if (kind==='in') u.inTokens += tokens; else u.outTokens += tokens;
     set({ usage: { byModel: { ...get().usage.byModel, [model]: u } } });
+  },
+  setRetrieval: (stats) => {
+    const usage = get().usage;
+    set({ usage: { ...usage, retrieval: stats } });
   }
 }));
 
