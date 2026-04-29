@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.api.campaign import router as campaign_router
 from backend.app.api.play import router as play_router
@@ -13,6 +14,12 @@ from backend.app.models.api import HealthResponse
 settings.ensure_directories()
 
 app = FastAPI(title="CharacterRPG Backend", version="0.1.0", root_path=settings.root_path)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.include_router(retrieval_router)
 app.include_router(setup_router)
 app.include_router(campaign_router)
