@@ -1,5 +1,5 @@
 import assert from 'assert';
-import { stripThink, stripFences, tryParse, extractJsonWithTurns } from '../providers/ollama/text.ts';
+import { stripThink, stripFences, tryParse, extractJsonWithTurns } from '../providers/ollama/text.js';
 
 // Think block removal
 {
