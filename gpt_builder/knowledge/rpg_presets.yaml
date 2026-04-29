@@ -1,0 +1,121 @@
+# Starter Scenario Library (YAML)
+# Merge order: defaults -> chosen preset -> session overrides
+# These are campaign hooks, not rigid settings. The GPT should reshape them during intake.
+
+defaults:
+  content_rating: SFW
+  romance: PG-13
+  allow_inference: true
+  pacing: Moderate
+  focus: Character-driven campaign with faction pressure and evolving consequences
+  lines: [sexual content with minors, sexual violence, explicit sexual description, torture porn]
+  veils: [intimate scenes beyond kissing, graphic gore, prolonged body horror]
+
+presets:
+  Rustwater Ledger:
+    setting: A river-port city whose floodgates double as sealed magical archives
+    genre_vibe: Urban fantasy intrigue
+    tone: Cinematic
+    themes: [trust, civic decay, buried infrastructure]
+    premise_hook: A public works failure reveals records powerful people thought were drowned years ago.
+    opening_pressures:
+      - Couriers start disappearing after carrying fragments of an old ledger.
+      - Two rival civic factions need a deniable outsider before the next lock release.
+    starter_npcs:
+      - meticulous floodgate engineer with a private map archive
+      - exhausted fixer trying to keep neighborhoods from turning on each other
+      - charming debt broker with suspicious access to restricted canals
+    complications:
+      - the city cannot survive another panic
+      - every document appears to implicate someone useful
+      - some of the records are alive enough to answer back
+
+  The Last Museum Train:
+    setting: A continent-crossing luxury rail line that now serves as a moving diplomatic museum
+    genre_vibe: Mystery with social pressure
+    tone: Witty and tense
+    themes: [reputation, cultural theft, chosen loyalty]
+    premise_hook: A stolen exhibit may prove the train itself is carrying a false history.
+    opening_pressures:
+      - A curator quietly asks the PC to verify an impossible provenance.
+      - Security is tightening because someone important is expected to defect mid-journey.
+    starter_npcs:
+      - idealistic conservator in over their head
+      - polished diplomat who knows more than they admit
+      - rail mechanic who treats the train like a holy relic
+    complications:
+      - everyone is trapped together until the next border stop
+      - a public scandal could trigger international fallout
+      - the missing artifact may have been removed for a good reason
+
+  Saltglass Frontier:
+    setting: A wind-scoured settlement built around a mirage-rich salt basin and a failing beacon network
+    genre_vibe: Frontier fantasy adventure
+    tone: Stark but hopeful
+    themes: [survival, belonging, stewardship]
+    premise_hook: The beacon network that keeps entire communities from vanishing into the basin starts sending contradictory routes.
+    opening_pressures:
+      - caravans arrive angry because their maps no longer agree with the lights
+      - an old oath-bound order wants control of the repairs
+    starter_npcs:
+      - local signal-keeper with sleep-deprived precision
+      - cheerful scavenger who knows the basin's false roads
+      - envoy from an order that mistakes authority for wisdom
+    complications:
+      - the basin changes in response to human conflict
+      - resources are too scarce for a clean moral choice
+      - one beacon may be warning about something deeper than storms
+
+  Choir of Static:
+    setting: A near-future city where emergency infrastructure runs on legacy systems no one fully understands
+    genre_vibe: Techno-thriller with human stakes
+    tone: Urgent
+    themes: [control, memory, public trust]
+    premise_hook: A pattern hidden in citywide service outages appears to be a plea for help from inside the network.
+    opening_pressures:
+      - a district clinic goes offline during a heat event
+      - rival groups want the anomaly silenced or exposed for opposite reasons
+    starter_npcs:
+      - systems linguist who hears patterns in outages
+      - neighborhood organizer tired of being told to wait
+      - corporate continuity officer balancing panic against truth
+    complications:
+      - every fix creates political winners and losers
+      - the system may know things about the PC it should not
+      - a rushed answer could collapse public trust
+
+  Thorns Beneath the House:
+    setting: A sprawling old estate where three branches of one family maintain a ritual peace they barely understand
+    genre_vibe: Gothic social drama
+    tone: Intimate and unsettling
+    themes: [inheritance, secrecy, obligation]
+    premise_hook: A routine inheritance season fails when the house refuses a rightful claimant.
+    opening_pressures:
+      - the family needs an outsider to verify what the old rules actually say
+      - servants have begun moving heirlooms to rooms that do not exist on the floor plan
+    starter_npcs:
+      - heir apparent who is trying very hard not to be cruel
+      - household steward who measures truth in practical outcomes
+      - cousin whose kindness may be tactical
+    complications:
+      - the estate rewards the wrong forms of honesty
+      - romance and alliance are politically indistinguishable
+      - the house may be choosing its own future
+
+  Ashes of the Second Sun:
+    setting: An orbital salvage belt built around the remains of a failed utopian generation ship
+    genre_vibe: Spacefaring salvage drama
+    tone: Reflective and dangerous
+    themes: [legacy, scarcity, reinvention]
+    premise_hook: A newly opened section of the wreck contains evidence that the ship's mission was rewritten after launch.
+    opening_pressures:
+      - salvage crews are racing toward the breach before a claims tribunal can lock it down
+      - station authorities fear unrest if the truth spreads too quickly
+    starter_npcs:
+      - union pilot who keeps volunteering for bad jobs
+      - archive diver who has started withholding discoveries
+      - tribunal clerk desperate to keep the peace
+    complications:
+      - every recovered answer creates a new ownership fight
+      - life support shortages turn ideology into logistics
+      - the ship may still contain active decision systems

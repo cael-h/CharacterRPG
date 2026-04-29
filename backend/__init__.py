@@ -1,0 +1,1 @@
+"""CharacterRPG backend package."""

@@ -1,0 +1,46 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "character-rpg"
+version = "0.1.0"
+description = "Provider-agnostic backend and app runtime for CharacterRPG."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.95,<0.100",
+  "httpx>=0.24,<0.25",
+  "pydantic>=1.10.13,<2",
+  "PyYAML>=6,<7",
+  "uvicorn>=0.32,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3,<9",
+]
+lint = [
+  "ruff>=0.8,<0.9",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["backend/tests"]
+python_files = ["test_*.py"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.hatch.build.targets.wheel]
+packages = ["backend"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/backend",
+  "/docs",
+  "/gpt_builder",
+  "/README.md",
+  "/pyproject.toml",
+]

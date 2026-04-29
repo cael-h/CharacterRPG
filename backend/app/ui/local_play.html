@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CharacterRPG Local Play</title>
+  <style>
+    :root {
+      --bg: #f4efe4;
+      --panel: #fffaf0;
+      --panel-strong: #f0e2c7;
+      --ink: #2a241d;
+      --muted: #6b6256;
+      --line: #cdbda1;
+      --accent: #8c3b2a;
+      --accent-strong: #6c2417;
+      --accent-soft: #efe0d3;
+      --ok: #2c6a4a;
+      --warn: #8a5a12;
+      --shadow: 0 18px 50px rgba(72, 45, 23, 0.12);
+      --radius: 18px;
+      --mono: "Cascadia Code", "Fira Code", monospace;
+      --sans: "Segoe UI", "Noto Sans", sans-serif;
+      --serif: "Georgia", "Times New Roman", serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--sans);
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(140, 59, 42, 0.18), transparent 30%),
+        linear-gradient(180deg, #f8f4eb 0%, var(--bg) 100%);
+    }
+
+    .shell {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 24px 16px 40px;
+    }
+
+    .hero {
+      background: linear-gradient(135deg, rgba(140, 59, 42, 0.96), rgba(49, 33, 26, 0.96));
+      color: #fff7ea;
+      border-radius: 28px;
+      padding: 24px;
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto -40px -60px auto;
+      width: 180px;
+      height: 180px;
+      border-radius: 999px;
+      background: rgba(255, 244, 224, 0.12);
+      filter: blur(4px);
+    }
+
+    .eyebrow {
+      display: inline-block;
+      margin-bottom: 10px;
+      padding: 6px 10px;
+      border: 1px solid rgba(255, 247, 234, 0.24);
+      border-radius: 999px;
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-family: var(--serif);
+      font-size: clamp(2rem, 4vw, 3.4rem);
+      line-height: 0.95;
+    }
+
+    .hero p {
+      max-width: 760px;
+      margin: 12px 0 0;
+      color: rgba(255, 247, 234, 0.88);
+      line-height: 1.5;
+    }
+
+    .grid {
+      display: grid;
+      gap: 16px;
+      margin-top: 18px;
+    }
+
+    @media (min-width: 960px) {
+      .grid {
+        grid-template-columns: 1.02fr 1.18fr;
+        align-items: start;
+      }
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid rgba(97, 72, 46, 0.14);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .card-head {
+      padding: 14px 16px;
+      border-bottom: 1px solid rgba(97, 72, 46, 0.12);
+      background: linear-gradient(180deg, rgba(255, 250, 240, 0.95), rgba(244, 234, 215, 0.7));
+    }
+
+    .card-head h2 {
+      margin: 0;
+      font-size: 1rem;
+      letter-spacing: 0.02em;
+    }
+
+    .card-head p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+      line-height: 1.45;
+    }
+
+    .card-body {
+      padding: 16px;
+    }
+
+    .stack {
+      display: grid;
+      gap: 12px;
+    }
+
+    .status-row {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent-strong);
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+
+    .pill.ok {
+      background: rgba(44, 106, 74, 0.12);
+      color: var(--ok);
+    }
+
+    .pill.warn {
+      background: rgba(138, 90, 18, 0.12);
+      color: var(--warn);
+    }
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--ink);
+    }
+
+    textarea,
+    input[type="text"],
+    input[type="number"] {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fffdfa;
+      color: var(--ink);
+      font: inherit;
+      padding: 12px 14px;
+    }
+
+    textarea {
+      min-height: 150px;
+      resize: vertical;
+      line-height: 1.45;
+    }
+
+    .form-grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    @media (min-width: 640px) {
+      .form-grid {
+        grid-template-columns: 1fr 160px;
+      }
+    }
+
+    .check-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    button,
+    .link-button {
+      appearance: none;
+      border: 0;
+      border-radius: 14px;
+      padding: 12px 16px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+      transition: transform 120ms ease, opacity 120ms ease;
+    }
+
+    button:hover,
+    .link-button:hover {
+      transform: translateY(-1px);
+    }
+
+    .primary {
+      background: var(--accent);
+      color: #fff7ea;
+    }
+
+    .secondary {
+      background: var(--panel-strong);
+      color: var(--ink);
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: wait;
+      transform: none;
+    }
+
+    .panel-note,
+    .mono {
+      font-family: var(--mono);
+      font-size: 0.88rem;
+    }
+
+    .panel-note {
+      color: var(--muted);
+      white-space: pre-wrap;
+      line-height: 1.45;
+    }
+
+    .scene {
+      padding: 16px;
+      border-radius: 16px;
+      background: linear-gradient(180deg, rgba(140, 59, 42, 0.08), rgba(255, 250, 240, 0.95));
+      border: 1px solid rgba(140, 59, 42, 0.12);
+      white-space: pre-wrap;
+      line-height: 1.6;
+    }
+
+    .transcript {
+      display: grid;
+      gap: 10px;
+      max-height: 620px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .entry {
+      padding: 14px;
+      border-radius: 16px;
+      border: 1px solid rgba(97, 72, 46, 0.12);
+      background: #fffdf9;
+    }
+
+    .entry.user {
+      border-left: 5px solid #355c7d;
+    }
+
+    .entry.assistant {
+      border-left: 5px solid var(--accent);
+      background: linear-gradient(180deg, rgba(140, 59, 42, 0.05), rgba(255, 253, 249, 1));
+    }
+
+    .entry-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+      font-size: 0.84rem;
+      color: var(--muted);
+    }
+
+    .entry-body {
+      white-space: pre-wrap;
+      line-height: 1.55;
+    }
+
+    .empty {
+      padding: 16px;
+      border: 1px dashed var(--line);
+      border-radius: 16px;
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.55);
+      line-height: 1.5;
+    }
+
+    .error {
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(140, 59, 42, 0.12);
+      color: var(--accent-strong);
+      border: 1px solid rgba(140, 59, 42, 0.14);
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="hero">
+      <div class="eyebrow">Local Play Studio</div>
+      <h1>Run the GM loop without a public domain.</h1>
+      <p>
+        This page uses your local CharacterRPG backend, the stored campaign bundle, and your selected model provider.
+        Bootstrap a campaign first, then send turns here as if you were talking to the GPT.
+      </p>
+    </section>
+
+    <div class="grid">
+      <section class="card">
+        <div class="card-head">
+          <h2>Control Desk</h2>
+          <p>Campaign status, quick links, and the turn submission form.</p>
+        </div>
+        <div class="card-body stack">
+          <div id="statusRow" class="status-row"></div>
+          <div id="campaignSummary" class="panel-note">Loading campaign bundle...</div>
+          <div id="errorBox" class="error" hidden></div>
+
+          <div class="button-row">
+            <button id="refreshButton" class="secondary" type="button">Refresh State</button>
+            <a class="link-button secondary" href="/docs" target="_blank" rel="noreferrer">Open API Docs</a>
+          </div>
+
+          <form id="playForm" class="stack">
+            <div>
+              <label for="userMessage">Your next action</label>
+              <textarea id="userMessage" name="userMessage" placeholder="Example: I ask the stationmaster who paid the runner."></textarea>
+            </div>
+
+            <div class="form-grid">
+              <div>
+                <label for="model">Override model</label>
+                <input id="model" name="model" type="text" placeholder="Optional, e.g. gpt-4o-mini">
+              </div>
+              <div>
+                <label for="historyTurns">History turns</label>
+                <input id="historyTurns" name="historyTurns" type="number" min="0" max="50" value="6">
+              </div>
+            </div>
+
+            <label class="check-row" for="persistTranscript">
+              <input id="persistTranscript" name="persistTranscript" type="checkbox" checked>
+              Persist transcript and advance the campaign turn
+            </label>
+
+            <div class="button-row">
+              <button id="sendButton" class="primary" type="submit">Generate GM Reply</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Session Output</h2>
+          <p>The latest GM reply and recent transcript entries from local storage.</p>
+        </div>
+        <div class="card-body stack">
+          <div id="latestReply" class="scene">No scene generated yet.</div>
+          <div id="transcriptList" class="transcript"></div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const statusRow = document.getElementById("statusRow");
+    const campaignSummary = document.getElementById("campaignSummary");
+    const latestReply = document.getElementById("latestReply");
+    const transcriptList = document.getElementById("transcriptList");
+    const errorBox = document.getElementById("errorBox");
+    const playForm = document.getElementById("playForm");
+    const refreshButton = document.getElementById("refreshButton");
+    const sendButton = document.getElementById("sendButton");
+    const userMessage = document.getElementById("userMessage");
+    const modelField = document.getElementById("model");
+    const historyTurnsField = document.getElementById("historyTurns");
+    const persistTranscriptField = document.getElementById("persistTranscript");
+
+    function setError(message) {
+      if (!message) {
+        errorBox.hidden = true;
+        errorBox.textContent = "";
+        return;
+      }
+      errorBox.hidden = false;
+      errorBox.textContent = message;
+    }
+
+    function renderPill(label, value, tone = "") {
+      return `<div class="pill ${tone}"><span>${label}</span><strong>${value}</strong></div>`;
+    }
+
+    function escapeHtml(value) {
+      return value
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;");
+    }
+
+    const API_ROOT_PATH = "__CHARACTERRPG_ROOT_PATH__";
+
+    function apiUrl(path) {
+      return `${API_ROOT_PATH}${path}`;
+    }
+
+    async function fetchJson(url, options) {
+      const response = await fetch(url, options);
+      const contentType = response.headers.get("content-type") || "";
+      const payload = contentType.includes("application/json")
+        ? await response.json()
+        : await response.text();
+      if (!response.ok) {
+        const detail = typeof payload === "object" && payload ? payload.detail : payload;
+        throw new Error(typeof detail === "string" ? detail : `Request failed with status ${response.status}`);
+      }
+      return payload;
+    }
+
+    async function loadBundle() {
+      const bundle = await fetchJson(apiUrl("/campaign/bundle"));
+      const title = bundle?.scenario?.title || "Uninitialized Campaign";
+      const premise = bundle?.scenario?.premise || "No campaign bundle found yet.";
+      const campaignId = bundle?.world_state?.campaign_id || "none";
+      const turn = bundle?.world_state?.turn ?? 0;
+      const quests = bundle?.quests?.length ?? 0;
+      const events = bundle?.event_queue?.length ?? 0;
+      const bootstrapped = title !== "Uninitialized Campaign";
+
+      statusRow.innerHTML = [
+        renderPill("Campaign", campaignId, bootstrapped ? "ok" : "warn"),
+        renderPill("Turn", turn),
+        renderPill("Quests", quests),
+        renderPill("Events", events),
+      ].join("");
+
+      campaignSummary.textContent =
+        `${title}\n\n${premise}\n\n` +
+        `Location: ${bundle?.world_state?.location || "starting_region"}\n` +
+        `Current scene: ${bundle?.world_state?.current_scene || "The campaign is ready to begin."}`;
+    }
+
+    async function loadHistory() {
+      const history = await fetchJson(apiUrl("/play/history?limit=20"));
+      if (!Array.isArray(history) || history.length === 0) {
+        transcriptList.innerHTML =
+          `<div class="empty">No local play transcript yet. Bootstrap a campaign, then send a turn from the form.</div>`;
+        return;
+      }
+
+      transcriptList.innerHTML = history.map((entry) => `
+        <article class="entry ${entry.role}">
+          <div class="entry-head">
+            <strong>${entry.role === "assistant" ? "GM reply" : "Player turn"}</strong>
+            <span>Turn ${entry.turn}</span>
+          </div>
+          <div class="entry-body">${escapeHtml(entry.content)}</div>
+        </article>
+      `).join("");
+    }
+
+    async function refreshAll() {
+      setError("");
+      await Promise.all([loadBundle(), loadHistory()]);
+    }
+
+    async function submitTurn(event) {
+      event.preventDefault();
+      const message = userMessage.value.trim();
+      if (!message) {
+        setError("Enter a player action before generating a reply.");
+        return;
+      }
+
+      setError("");
+      sendButton.disabled = true;
+      sendButton.textContent = "Generating...";
+
+      try {
+        const payload = {
+          user_message: message,
+          max_history_turns: Number(historyTurnsField.value || 6),
+          persist_transcript: persistTranscriptField.checked,
+        };
+
+        if (modelField.value.trim()) {
+          payload.model = modelField.value.trim();
+        }
+
+        const response = await fetchJson(apiUrl("/play/respond"), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+
+        latestReply.textContent = response.reply;
+        userMessage.value = "";
+        await refreshAll();
+      } catch (error) {
+        setError(error instanceof Error ? error.message : String(error));
+      } finally {
+        sendButton.disabled = false;
+        sendButton.textContent = "Generate GM Reply";
+      }
+    }
+
+    refreshButton.addEventListener("click", () => {
+      refreshAll().catch((error) => {
+        setError(error instanceof Error ? error.message : String(error));
+      });
+    });
+
+    playForm.addEventListener("submit", submitTurn);
+
+    refreshAll().catch((error) => {
+      setError(error instanceof Error ? error.message : String(error));
+    });
+  </script>
+</body>
+</html>
