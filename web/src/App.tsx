@@ -85,8 +85,8 @@ const initialBootstrap = {
 function App() {
   const [apiBase, setApiBase] = useState(API_BASE);
   const [providers, setProviders] = useState<ProviderDescriptor[]>([]);
-  const [selectedProvider, setSelectedProvider] = useState('mock');
-  const [selectedModel, setSelectedModel] = useState('mock-rpg-model');
+  const [selectedProvider, setSelectedProvider] = useState('');
+  const [selectedModel, setSelectedModel] = useState('');
   const [campaigns, setCampaigns] = useState<CampaignSummary[]>([]);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [selectedCampaign, setSelectedCampaign] = useState<string>('');
@@ -141,11 +141,19 @@ function App() {
   const refreshActive = useCallback(async () => {
     if (!selectedCampaign) return;
     const query = new URLSearchParams({ campaign_id: selectedCampaign });
+    const campaignQuery = query.toString();
     if (selectedSession) query.set('session_id', selectedSession);
-    const [bundlePayload, historyPayload] = await Promise.all([
-      api<CampaignBundle>(`/campaign/bundle?${query}`),
-      api<TranscriptEntry[]>(`/play/history?limit=40&${query}`),
-    ]);
+    const sessionQuery = query.toString();
+    let bundlePayload: CampaignBundle;
+    let historyPayload: TranscriptEntry[] = [];
+    try {
+      [bundlePayload, historyPayload] = await Promise.all([
+        api<CampaignBundle>(`/campaign/bundle?${sessionQuery}`),
+        api<TranscriptEntry[]>(`/play/history?limit=40&${sessionQuery}`),
+      ]);
+    } catch {
+      bundlePayload = await api<CampaignBundle>(`/campaign/bundle?${campaignQuery}`);
+    }
     setBundle(bundlePayload);
     setHistory(historyPayload);
   }, [api, selectedCampaign, selectedSession]);
@@ -215,7 +223,7 @@ function App() {
             campaign_id: selectedCampaign || undefined,
             session_id: selectedSession || undefined,
             session_title: sessionTitle,
-            provider: selectedProvider,
+            provider: selectedProvider || undefined,
             model: selectedModel || undefined,
             create_session_if_missing: true,
           }),

@@ -94,6 +94,14 @@ def _extract_error(payload: Any, fallback: str) -> str:
     return fallback
 
 
+def _safe_json_response(response: Any) -> Any:
+    try:
+        return response.json()
+    except Exception:
+        text = getattr(response, "text", "")
+        return {"error": {"message": text or "Provider returned a non-JSON response."}}
+
+
 def _mock_response(request: ModelRequest, provider: str, model: str) -> ModelResponse:
     if "campaign setup guide" in request.instructions:
         text = (
@@ -160,7 +168,7 @@ def _openai_responses(request: ModelRequest, provider: str, model: str) -> Model
             },
             json=body,
         )
-    payload = response.json()
+    payload = _safe_json_response(response)
     if response.status_code >= 400:
         raise ModelProviderError(_extract_error(payload, f"OpenAI request failed: {response.status_code}"))
     text = _extract_openai_text(payload)
@@ -199,7 +207,7 @@ def _openai_compatible(request: ModelRequest, provider: str, model: str) -> Mode
             },
             json=body,
         )
-    payload = response.json()
+    payload = _safe_json_response(response)
     if response.status_code >= 400:
         raise ModelProviderError(
             _extract_error(payload, f"OpenAI-compatible request failed: {response.status_code}")
@@ -226,7 +234,7 @@ def _ollama(request: ModelRequest, provider: str, model: str) -> ModelResponse:
         body["options"] = {"temperature": request.temperature}
     with httpx.Client(timeout=120.0) as client:
         response = client.post(f"{base_url}/api/generate", json=body)
-    payload = response.json()
+    payload = _safe_json_response(response)
     if response.status_code >= 400:
         raise ModelProviderError(_extract_error(payload, f"Ollama request failed: {response.status_code}"))
     text = payload.get("response")
@@ -263,7 +271,7 @@ def _huggingface(request: ModelRequest, provider: str, model: str) -> ModelRespo
             },
             json=body,
         )
-    payload = response.json()
+    payload = _safe_json_response(response)
     if response.status_code >= 400:
         raise ModelProviderError(
             _extract_error(payload, f"Hugging Face request failed: {response.status_code}")

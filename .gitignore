@@ -22,6 +22,7 @@ web/dist/
 __pycache__/
 .pytest_cache/
 .venv/
+.runtime/
 *.pyc
 
 # Generated backend runtime state
