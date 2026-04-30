@@ -66,7 +66,13 @@ def list_providers() -> ProvidersResponse:
             provider="openai_compatible",
             default_model=settings.default_model,
             configured=bool(settings.openai_compatible_base_url and (settings.openai_compatible_api_key or settings.openai_api_key)),
-            notes="Configurable /chat/completions adapter for compatible APIs such as Venice.",
+            notes="Configurable /chat/completions adapter for OpenAI-compatible APIs.",
+        ),
+        ProviderDescriptor(
+            provider="venice",
+            default_model=settings.venice_model,
+            configured=bool(settings.venice_api_key),
+            notes=f"Venice /chat/completions adapter at {settings.venice_base_url}.",
         ),
         ProviderDescriptor(
             provider="ollama",

@@ -1,8 +1,10 @@
+import os
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
+from backend.app import config
 from backend.app.main import app
 from backend.app.models.bootstrap import CampaignBootstrapRequest, PlayerCharacterInput
 from backend.app.models.play import LocalPlayRequest
@@ -32,13 +34,14 @@ def test_health_endpoint_reports_ok() -> None:
     assert response.json() == {"status": "ok"}
 
 
-def test_provider_listing_includes_mock_and_ollama() -> None:
+def test_provider_listing_includes_configured_adapters() -> None:
     response = client.get("/providers")
     payload = response.json()
 
     assert response.status_code == 200
     providers = {item["provider"] for item in payload["providers"]}
     assert "mock" in providers
+    assert "venice" in providers
     assert "ollama" in providers
 
 
@@ -56,6 +59,27 @@ def test_provider_test_uses_mock_without_external_keys() -> None:
     assert payload["provider"] == "mock"
     assert payload["model"] == "mock-rpg-model"
     assert "Can you respond locally?" in payload["reply"]
+
+
+def test_env_loader_strips_quotes_filters_keys_and_preserves_process_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "VENICE_KEY='file-secret'\n"
+        'export OPENAI_KEY="file-openai"\n'
+        "IGNORED_SECRET=do-not-load\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("VENICE_KEY", raising=False)
+    monkeypatch.setenv("OPENAI_KEY", "process-openai")
+    monkeypatch.delenv("IGNORED_SECRET", raising=False)
+
+    config._load_env_file(env_file, allowed_keys={"VENICE_KEY", "OPENAI_KEY"})
+
+    assert os.environ["VENICE_KEY"] == "file-secret"
+    assert os.environ["OPENAI_KEY"] == "process-openai"
+    assert "IGNORED_SECRET" not in os.environ
 
 
 def test_campaign_bootstrap_writes_campaign_bundle() -> None:

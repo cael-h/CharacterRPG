@@ -1,12 +1,19 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
 from backend.app.config import settings
 
 
-ProviderName = Literal["mock", "openai_responses", "openai_compatible", "ollama", "huggingface"]
+ProviderName = Literal[
+    "mock",
+    "openai_responses",
+    "openai_compatible",
+    "venice",
+    "ollama",
+    "huggingface",
+]
 
 
 @dataclass(frozen=True)
@@ -218,6 +225,23 @@ def _openai_compatible(request: ModelRequest, provider: str, model: str) -> Mode
     return ModelResponse(text=text, provider=provider, model=model, raw=payload)
 
 
+def _venice(request: ModelRequest, provider: str, model: str) -> ModelResponse:
+    api_key = request.api_key or settings.venice_api_key
+    if not api_key:
+        raise ModelProviderError(
+            "Venice API key is not configured. Set CHARACTERRPG_VENICE_API_KEY or VENICE_API_KEY."
+        )
+    return _openai_compatible(
+        replace(
+            request,
+            api_key=api_key,
+            base_url=request.base_url or settings.venice_base_url,
+        ),
+        provider,
+        model,
+    )
+
+
 def _ollama(request: ModelRequest, provider: str, model: str) -> ModelResponse:
     base_url = (request.base_url or settings.ollama_base_url).rstrip("/")
     httpx = _load_httpx()
@@ -294,6 +318,8 @@ def generate_model_text(request: ModelRequest) -> ModelResponse:
     provider = (request.provider or settings.default_provider or "mock").strip().lower()
     if provider == "openai":
         provider = "openai_responses"
+    if provider == "venice_openai":
+        provider = "venice"
     model = request.model or _default_model_for(provider)
     if provider == "mock":
         return _mock_response(request, provider, model)
@@ -301,16 +327,20 @@ def generate_model_text(request: ModelRequest) -> ModelResponse:
         return _openai_responses(request, provider, model)
     if provider == "openai_compatible":
         return _openai_compatible(request, provider, model)
+    if provider == "venice":
+        return _venice(request, provider, model)
     if provider == "ollama":
         return _ollama(request, provider, model)
     if provider == "huggingface":
         return _huggingface(request, provider, model)
     raise ModelProviderError(
-        f"Unknown provider {provider!r}. Use mock, openai_responses, openai_compatible, ollama, or huggingface."
+        f"Unknown provider {provider!r}. Use mock, openai_responses, openai_compatible, venice, ollama, or huggingface."
     )
 
 
 def _default_model_for(provider: str) -> str:
+    if provider == "venice":
+        return settings.venice_model
     if provider == "ollama":
         return settings.ollama_model
     if provider == "mock":
