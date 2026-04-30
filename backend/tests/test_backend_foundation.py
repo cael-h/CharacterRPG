@@ -8,9 +8,11 @@ from backend.app import config
 from backend.app.main import app
 from backend.app.models.bootstrap import CampaignBootstrapRequest, PlayerCharacterInput
 from backend.app.models.play import LocalPlayRequest
+from backend.app.models.setup import CampaignSetupRequest
 from backend.app.services.campaign_bootstrap import build_campaign_bundle
 from backend.app.services.campaign_storage import CampaignStorage
 from backend.app.services.local_play import _looks_like_hidden_planning, generate_local_play_response
+from backend.app.services.setup_assistant import generate_setup_response
 
 
 client = TestClient(app)
@@ -59,6 +61,108 @@ def test_provider_test_uses_mock_without_external_keys() -> None:
     assert payload["provider"] == "mock"
     assert payload["model"] == "mock-rpg-model"
     assert "Can you respond locally?" in payload["reply"]
+
+
+def test_setup_review_previews_ready_draft_without_writing_campaign() -> None:
+    response = client.post(
+        "/setup/review",
+        json={
+            "draft": {
+                "story_name": "Red Lantern Ledger",
+                "setting": "Sable Harbor, an occult port city",
+                "genre_vibe": "Adult noir fantasy",
+                "player_character": {
+                    "name": "Liora Vance",
+                    "concept": "A disgraced oath-broker tracking a missing courier.",
+                },
+            }
+        },
+    )
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["ready_to_bootstrap"] is True
+    assert payload["campaign_id"] == "red-lantern-ledger"
+    assert payload["summary"]["title"] == "Red Lantern Ledger"
+
+    campaigns_response = client.get("/play/campaigns")
+    assert campaigns_response.status_code == 200
+    assert campaigns_response.json() == []
+
+
+def test_setup_review_reports_missing_required_draft_fields() -> None:
+    response = client.post("/setup/review", json={"draft": {}})
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["ready_to_bootstrap"] is False
+    assert "setting_or_lore" in payload["missing_fields"]
+    assert "genre_vibe" in payload["missing_fields"]
+    assert "player_character.concept" in payload["missing_fields"]
+
+
+def test_setup_response_preserves_existing_preferences_when_model_omits_them() -> None:
+    class FakeResponse:
+        status_code = 200
+
+        def json(self) -> dict[str, object]:
+            return {
+                "output_text": (
+                    "{"
+                    '"assistant_reply":"Draft tightened.",'
+                    '"draft":{"story_name":"Red Lantern","setting":"Sable Harbor","genre_vibe":"Noir","player_character":{"concept":"Oath-broker"}},'
+                    '"ready_to_bootstrap":true,'
+                    '"missing_fields":[]'
+                    "}"
+                )
+            }
+
+    class FakeClient:
+        def post(self, *_args: object, **_kwargs: object) -> FakeResponse:
+            return FakeResponse()
+
+    response = generate_setup_response(
+        CampaignSetupRequest(
+            user_message="Tighten this.",
+            draft=CampaignBootstrapRequest(
+                story_name="Red Lantern",
+                setting="Sable Harbor",
+                genre_vibe="Noir",
+                themes=["debt"],
+                play_preferences=["Mature content can be included when natural."],
+                player_character=PlayerCharacterInput(
+                    name="Liora",
+                    concept="Oath-broker",
+                    goals=["Find Cassian"],
+                ),
+            ),
+        ),
+        client=FakeClient(),
+    )
+
+    assert response.ready_to_bootstrap is True
+    assert response.draft.play_preferences == ["Mature content can be included when natural."]
+    assert response.draft.themes == ["debt"]
+    assert response.draft.player_character.name == "Liora"
+    assert response.draft.player_character.goals == ["Find Cassian"]
+
+
+def test_setup_response_reports_invalid_model_json() -> None:
+    class FakeResponse:
+        status_code = 200
+
+        def json(self) -> dict[str, str]:
+            return {"output_text": "This is not JSON."}
+
+    class FakeClient:
+        def post(self, *_args: object, **_kwargs: object) -> FakeResponse:
+            return FakeResponse()
+
+    with pytest.raises(RuntimeError, match="invalid JSON"):
+        generate_setup_response(
+            CampaignSetupRequest(user_message="Draft this."),
+            client=FakeClient(),
+        )
 
 
 def test_env_loader_strips_quotes_filters_keys_and_preserves_process_env(

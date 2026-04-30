@@ -5,9 +5,16 @@ from typing import Any
 
 from backend.app.config import settings
 from backend.app.model_utils import model_dump, model_validate
-from backend.app.models.bootstrap import CampaignBootstrapRequest
-from backend.app.models.setup import CampaignSetupRequest, CampaignSetupResponse, SetupChatMessage
-from backend.app.services.campaign_bootstrap import _load_lore_context
+from backend.app.models.bootstrap import CampaignBootstrapRequest, CampaignBootstrapSummary
+from backend.app.models.setup import (
+    CampaignSetupRequest,
+    CampaignSetupResponse,
+    CampaignSetupReviewFinding,
+    CampaignSetupReviewRequest,
+    CampaignSetupReviewResponse,
+    SetupChatMessage,
+)
+from backend.app.services.campaign_bootstrap import _load_lore_context, build_campaign_bundle
 from backend.app.services.local_play import _extract_error_message, _extract_output_text
 from backend.app.services.model_providers import (
     ModelMessage,
@@ -86,6 +93,85 @@ def _minimum_missing_fields(draft: CampaignBootstrapRequest) -> list[str]:
     return missing
 
 
+def _summary_lore_sources(world_notes: list[str]) -> list[str]:
+    return [
+        note.removeprefix("Lore source: ").strip()
+        for note in world_notes
+        if note.startswith("Lore source: ")
+    ]
+
+
+def review_setup_draft(request: CampaignSetupReviewRequest) -> CampaignSetupReviewResponse:
+    draft = request.draft
+    missing_fields = _minimum_missing_fields(draft)
+    findings = [
+        CampaignSetupReviewFinding(
+            severity="critical",
+            field=field,
+            message="Add this before bootstrapping so the first playable session has enough context.",
+        )
+        for field in missing_fields
+    ]
+
+    if missing_fields:
+        return CampaignSetupReviewResponse(
+            ready_to_bootstrap=False,
+            missing_fields=missing_fields,
+            findings=findings,
+        )
+
+    try:
+        bundle = build_campaign_bundle(draft)
+    except ValueError as exc:
+        return CampaignSetupReviewResponse(
+            ready_to_bootstrap=False,
+            missing_fields=[],
+            findings=[
+                CampaignSetupReviewFinding(
+                    severity="critical",
+                    field="draft",
+                    message=str(exc),
+                )
+            ],
+        )
+
+    lore_sources = _summary_lore_sources(bundle.world_state.notes)
+    summary = CampaignBootstrapSummary(
+        title=bundle.scenario.title,
+        premise=bundle.scenario.premise,
+        opening_hook=bundle.scenario.opening_hook,
+        starter_quests=[quest.title for quest in bundle.quests],
+        inferred_fields=bundle.scenario.inferred_fields,
+        lore_sources=lore_sources,
+    )
+    if bundle.scenario.inferred_fields:
+        findings.append(
+            CampaignSetupReviewFinding(
+                severity="info",
+                field="inferred_fields",
+                message="Some fields will be inferred during bootstrap; edit the draft if you want stricter control.",
+            )
+        )
+    if any("nsfw" in preference.lower() or "mature" in preference.lower() for preference in bundle.scenario.play_preferences):
+        findings.append(
+            CampaignSetupReviewFinding(
+                severity="info",
+                field="play_preferences",
+                message="Mature content is enabled for consenting adult story flow, with hard guardrails for minors and sexual violence.",
+            )
+        )
+
+    return CampaignSetupReviewResponse(
+        ready_to_bootstrap=True,
+        missing_fields=[],
+        campaign_id=bundle.world_state.campaign_id,
+        summary=summary,
+        preview=bundle,
+        findings=findings,
+        lore_sources=lore_sources,
+    )
+
+
 def generate_setup_response(
     request: CampaignSetupRequest,
     client: Any | None = None,
@@ -133,19 +219,44 @@ def generate_setup_response(
     if not output_text:
         raise RuntimeError("Model provider returned an empty setup response.")
 
-    payload = _extract_json_object(output_text)
+    try:
+        payload = _extract_json_object(output_text)
+    except (RuntimeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("Setup assistant returned invalid JSON.") from exc
     assistant_reply = str(payload.get("assistant_reply") or "").strip()
     if not assistant_reply:
         raise RuntimeError("Setup assistant response did not include assistant_reply.")
 
     draft_payload = payload.get("draft") or {}
     draft = model_validate(CampaignBootstrapRequest, draft_payload)
+    if request.draft.story_name and not draft.story_name:
+        draft.story_name = request.draft.story_name
+    if request.draft.setting and not draft.setting:
+        draft.setting = request.draft.setting
+    if request.draft.genre_vibe and not draft.genre_vibe:
+        draft.genre_vibe = request.draft.genre_vibe
+    if request.draft.tone and not draft.tone:
+        draft.tone = request.draft.tone
+    if request.draft.themes and not draft.themes:
+        draft.themes = list(request.draft.themes)
+    if request.draft.play_preferences and not draft.play_preferences:
+        draft.play_preferences = list(request.draft.play_preferences)
     if request.draft.lore_paths and not draft.lore_paths:
         draft.lore_paths = list(request.draft.lore_paths)
     if request.draft.lore_text and not draft.lore_text:
         draft.lore_text = request.draft.lore_text
     if request.draft.context_summary and not draft.context_summary:
         draft.context_summary = request.draft.context_summary
+    if request.draft.player_character.name and not draft.player_character.name:
+        draft.player_character.name = request.draft.player_character.name
+    if request.draft.player_character.concept and not draft.player_character.concept:
+        draft.player_character.concept = request.draft.player_character.concept
+    if request.draft.player_character.goals and not draft.player_character.goals:
+        draft.player_character.goals = list(request.draft.player_character.goals)
+    if request.draft.player_character.edges and not draft.player_character.edges:
+        draft.player_character.edges = list(request.draft.player_character.edges)
+    if request.draft.player_character.complications and not draft.player_character.complications:
+        draft.player_character.complications = list(request.draft.player_character.complications)
 
     missing_fields = _normalize_missing_fields(payload.get("missing_fields"))
     minimum_missing = _minimum_missing_fields(draft)

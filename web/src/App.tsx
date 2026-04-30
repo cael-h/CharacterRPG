@@ -2,14 +2,15 @@ import {
   Activity,
   BookOpen,
   Boxes,
+  CheckCircle2,
   GitBranch,
   ListChecks,
   MessageSquareText,
-  Play,
   RefreshCw,
   Send,
   Server,
   Settings2,
+  Wand2,
 } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -70,17 +71,121 @@ type CampaignBundle = {
   recap: string;
 };
 
+type SetupChatMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+};
+
+type PlayerCharacterDraft = {
+  name?: string | null;
+  concept?: string | null;
+  goals: string[];
+  edges: string[];
+  complications: string[];
+};
+
+type CampaignDraft = {
+  story_name?: string | null;
+  preset_name?: string | null;
+  setting?: string | null;
+  genre_vibe?: string | null;
+  tone?: string | null;
+  themes: string[];
+  context_summary?: string | null;
+  play_preferences: string[];
+  lore_text?: string | null;
+  lore_paths: string[];
+  allow_inference: boolean;
+  player_character: PlayerCharacterDraft;
+};
+
+type CampaignSetupResponse = {
+  assistant_reply: string;
+  draft: CampaignDraft;
+  ready_to_bootstrap: boolean;
+  missing_fields: string[];
+  lore_sources: string[];
+};
+
+type SetupReviewFinding = {
+  severity: 'info' | 'warning' | 'critical';
+  field: string;
+  message: string;
+};
+
+type SetupReviewResponse = {
+  ready_to_bootstrap: boolean;
+  missing_fields: string[];
+  campaign_id?: string | null;
+  summary?: {
+    title: string;
+    premise: string;
+    opening_hook: string;
+    starter_quests: string[];
+    inferred_fields: string[];
+    lore_sources: string[];
+  } | null;
+  findings: SetupReviewFinding[];
+  lore_sources: string[];
+};
+
 type Toast = { tone: 'info' | 'error' | 'success'; message: string } | null;
 
 const API_BASE = 'http://127.0.0.1:4100';
 
-const initialBootstrap = {
-  storyName: 'Ash Market Signals',
-  setting: 'A trade district built inside a retired fortress',
-  genre: 'Urban fantasy intrigue',
-  pcName: 'Nera Vale',
-  pcConcept: 'A courier with a dangerous memory for routes.',
+const maturePreference =
+  'Mature/NSFW material is allowed when it naturally follows from an adult story, but do not force it or make it the point of play.';
+
+const initialSetupDraft: CampaignDraft = {
+  story_name: 'Red Lantern Ledger',
+  setting: 'Sable Harbor, a rain-soaked occult port city where contracts can bind memories, debts, and desire.',
+  genre_vibe: 'Adult noir fantasy investigation',
+  tone: 'Lush, tense, grounded, player-led, not coy about mature implications but never gratuitous.',
+  themes: ['debt', 'consent', 'betrayal', 'hidden magic'],
+  context_summary: '',
+  play_preferences: [
+    maturePreference,
+    'Keep player agency intact; do not decide the player character feelings or actions.',
+    'No sexual content involving minors and no sexual violence.',
+  ],
+  lore_text: '',
+  lore_paths: [],
+  allow_inference: true,
+  player_character: {
+    name: 'Liora Vance',
+    concept: 'An adult disgraced oath-broker who can hear lies as a second voice.',
+    goals: ['Find the missing courier Cassian Vey', 'Recover the stolen Red Lantern ledger'],
+    edges: ['Reads contractual magic', 'Knows criminal etiquette'],
+    complications: ['The Harbor Court still owns one year of her future'],
+  },
 };
+
+const initialSetupPrompt =
+  'Shape this into a campaign draft. I want a tense occult noir investigation with adult stakes, strong continuity, and a first scene that gives me a meaningful lead.';
+
+const listToText = (items: string[] | undefined) => (items || []).join('\n');
+
+const textToList = (value: string) =>
+  value
+    .split('\n')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+const normalizeDraft = (draft: Partial<CampaignDraft> | undefined): CampaignDraft => ({
+  ...initialSetupDraft,
+  ...(draft || {}),
+  themes: draft?.themes || [],
+  play_preferences: draft?.play_preferences || [],
+  lore_paths: draft?.lore_paths || [],
+  allow_inference: draft?.allow_inference ?? true,
+  player_character: {
+    ...initialSetupDraft.player_character,
+    ...(draft?.player_character || {}),
+    goals: draft?.player_character?.goals || [],
+    edges: draft?.player_character?.edges || [],
+    complications: draft?.player_character?.complications || [],
+  },
+});
 
 function App() {
   const [apiBase, setApiBase] = useState(API_BASE);
@@ -95,7 +200,10 @@ function App() {
   const [history, setHistory] = useState<TranscriptEntry[]>([]);
   const [turnText, setTurnText] = useState('');
   const [sessionTitle, setSessionTitle] = useState('Main');
-  const [bootstrap, setBootstrap] = useState(initialBootstrap);
+  const [setupDraft, setSetupDraft] = useState<CampaignDraft>(initialSetupDraft);
+  const [setupInput, setSetupInput] = useState(initialSetupPrompt);
+  const [setupConversation, setSetupConversation] = useState<SetupChatMessage[]>([]);
+  const [setupReview, setSetupReview] = useState<SetupReviewResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<Toast>(null);
 
@@ -173,22 +281,97 @@ function App() {
     });
   }, [refreshActive]);
 
-  const bootstrapCampaign = async (event: FormEvent) => {
+  const updateSetupDraft = (patch: Partial<CampaignDraft>) => {
+    setSetupReview(null);
+    setSetupDraft((current) => normalizeDraft({ ...current, ...patch }));
+  };
+
+  const updatePlayerDraft = (patch: Partial<PlayerCharacterDraft>) => {
+    setSetupReview(null);
+    setSetupDraft((current) =>
+      normalizeDraft({
+        ...current,
+        player_character: {
+          ...current.player_character,
+          ...patch,
+        },
+      }),
+    );
+  };
+
+  const askSetupAssistant = async (event: FormEvent) => {
     event.preventDefault();
+    const content = setupInput.trim();
+    if (!content) return;
     setBusy(true);
     setToast(null);
     try {
-      const payload = await api<{ campaign_id: string }>('/campaign/bootstrap', {
+      const nextConversation: SetupChatMessage[] = [...setupConversation, { role: 'user', content }];
+      const payload = await api<CampaignSetupResponse>('/setup/respond', {
         method: 'POST',
         body: JSON.stringify({
-          story_name: bootstrap.storyName,
-          setting: bootstrap.setting,
-          genre_vibe: bootstrap.genre,
-          player_character: {
-            name: bootstrap.pcName,
-            concept: bootstrap.pcConcept,
-          },
+          user_message: content,
+          conversation: setupConversation,
+          draft: setupDraft,
+          provider: selectedProvider || undefined,
+          model: selectedModel || undefined,
         }),
+      });
+      setSetupConversation([...nextConversation, { role: 'assistant', content: payload.assistant_reply }]);
+      setSetupDraft(normalizeDraft(payload.draft));
+      setSetupInput('');
+      setSetupReview(null);
+      setToast({
+        tone: payload.ready_to_bootstrap ? 'success' : 'info',
+        message: payload.ready_to_bootstrap
+          ? 'Draft is ready for review.'
+          : `Draft updated. Missing: ${payload.missing_fields.join(', ') || 'review details'}`,
+      });
+    } catch (error) {
+      setToast({ tone: 'error', message: error instanceof Error ? error.message : String(error) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reviewSetupDraft = useCallback(async () => {
+    const payload = await api<SetupReviewResponse>('/setup/review', {
+      method: 'POST',
+      body: JSON.stringify({ draft: setupDraft }),
+    });
+    setSetupReview(payload);
+    return payload;
+  }, [api, setupDraft]);
+
+  const reviewDraft = async () => {
+    setBusy(true);
+    setToast(null);
+    try {
+      const payload = await reviewSetupDraft();
+      setToast({
+        tone: payload.ready_to_bootstrap ? 'success' : 'error',
+        message: payload.ready_to_bootstrap
+          ? `Review ready: ${payload.campaign_id}`
+          : `Review needs: ${payload.missing_fields.join(', ')}`,
+      });
+    } catch (error) {
+      setToast({ tone: 'error', message: error instanceof Error ? error.message : String(error) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const bootstrapCampaign = async () => {
+    setBusy(true);
+    setToast(null);
+    try {
+      const review = setupReview?.ready_to_bootstrap ? setupReview : await reviewSetupDraft();
+      if (!review.ready_to_bootstrap) {
+        throw new Error(`Review needs: ${review.missing_fields.join(', ') || 'draft updates'}`);
+      }
+      const payload = await api<{ campaign_id: string }>('/campaign/bootstrap', {
+        method: 'POST',
+        body: JSON.stringify(setupDraft),
       });
       setSelectedCampaign(payload.campaign_id);
       setSelectedSession('main');
@@ -324,8 +507,12 @@ function App() {
       <section className="play-surface" aria-label="Play session">
         <header className="topbar">
           <div>
-            <h1>{bundle?.scenario.title || 'Bootstrap a campaign'}</h1>
-            <p>{bundle?.scenario.genre_vibe || 'Create a campaign bundle, then start play.'}</p>
+            <h1>{bundle?.scenario.title || setupReview?.summary?.title || 'Prepare a campaign'}</h1>
+            <p>
+              {bundle?.scenario.genre_vibe ||
+                setupReview?.summary?.premise ||
+                'Draft, review, and approve a campaign before play starts.'}
+            </p>
           </div>
           <button className="icon-button" onClick={() => refreshActive()} type="button" aria-label="Refresh">
             <RefreshCw size={18} />
@@ -335,7 +522,7 @@ function App() {
         <section className="scene-band">
           <div>
             <span className="metric-label">Location</span>
-            <strong>{bundle?.world_state.location || 'Not set'}</strong>
+            <strong>{bundle?.world_state.location || setupDraft.setting || 'Not set'}</strong>
           </div>
           <div>
             <span className="metric-label">Turn</span>
@@ -355,7 +542,11 @@ function App() {
           {history.length === 0 ? (
             <div className="empty-state">
               <MessageSquareText size={28} />
-              <p>{bundle?.scenario.opening_hook || 'Bootstrap a campaign or select a saved session.'}</p>
+              <p>
+                {bundle?.scenario.opening_hook ||
+                  setupReview?.summary?.opening_hook ||
+                  'Use the setup assistant, review the draft, then approve it for play.'}
+              </p>
             </div>
           ) : (
             history.map((entry, index) => (
@@ -374,7 +565,7 @@ function App() {
             placeholder="Type your turn or OOC note"
             rows={3}
           />
-          <button disabled={busy || !turnText.trim()} type="submit">
+          <button disabled={busy || !turnText.trim() || !selectedCampaign} type="submit">
             <Send size={17} />
             <span>Send</span>
           </button>
@@ -430,52 +621,188 @@ function App() {
           </div>
         </section>
 
-        <form className="panel" onSubmit={bootstrapCampaign}>
+        <section className="panel setup-panel">
           <div className="section-title">
-            <Play size={16} />
-            <span>Bootstrap</span>
+            <Wand2 size={16} />
+            <span>Setup</span>
+          </div>
+          <div className="setup-chat" aria-live="polite">
+            {setupConversation.length === 0 ? (
+              <p className="empty">No setup turns yet.</p>
+            ) : (
+              setupConversation.slice(-6).map((message, index) => (
+                <article className={`setup-message ${message.role}`} key={`${message.role}:${index}`}>
+                  <span>{message.role === 'user' ? 'You' : 'Guide'}</span>
+                  <p>{message.content}</p>
+                </article>
+              ))
+            )}
+          </div>
+          <form className="setup-compose" onSubmit={askSetupAssistant}>
+            <textarea
+              value={setupInput}
+              onChange={(event) => setSetupInput(event.target.value)}
+              rows={4}
+              placeholder="Describe the campaign you want"
+            />
+            <button disabled={busy || !setupInput.trim()} type="submit">
+              <Wand2 size={17} />
+              <span>Draft</span>
+            </button>
+          </form>
+          <div className="button-row">
+            <button className="secondary-button" disabled={busy} onClick={reviewDraft} type="button">
+              <ListChecks size={16} />
+              <span>Review</span>
+            </button>
+            <button disabled={busy} onClick={bootstrapCampaign} type="button">
+              <CheckCircle2 size={17} />
+              <span>Approve</span>
+            </button>
+          </div>
+        </section>
+
+        <section className="panel">
+          <div className="section-title">
+            <ListChecks size={16} />
+            <span>Draft</span>
           </div>
           <label className="field">
             <span>Story</span>
             <input
-              value={bootstrap.storyName}
-              onChange={(event) => setBootstrap({ ...bootstrap, storyName: event.target.value })}
+              value={setupDraft.story_name || ''}
+              onChange={(event) => updateSetupDraft({ story_name: event.target.value })}
             />
           </label>
           <label className="field">
             <span>Setting</span>
-            <input
-              value={bootstrap.setting}
-              onChange={(event) => setBootstrap({ ...bootstrap, setting: event.target.value })}
+            <textarea
+              value={setupDraft.setting || ''}
+              onChange={(event) => updateSetupDraft({ setting: event.target.value })}
+              rows={3}
             />
           </label>
           <label className="field">
             <span>Genre</span>
             <input
-              value={bootstrap.genre}
-              onChange={(event) => setBootstrap({ ...bootstrap, genre: event.target.value })}
+              value={setupDraft.genre_vibe || ''}
+              onChange={(event) => updateSetupDraft({ genre_vibe: event.target.value })}
             />
+          </label>
+          <label className="field">
+            <span>Tone</span>
+            <input value={setupDraft.tone || ''} onChange={(event) => updateSetupDraft({ tone: event.target.value })} />
+          </label>
+          <label className="field">
+            <span>Themes</span>
+            <textarea
+              value={listToText(setupDraft.themes)}
+              onChange={(event) => updateSetupDraft({ themes: textToList(event.target.value) })}
+              rows={3}
+            />
+          </label>
+          <label className="field">
+            <span>Context</span>
+            <textarea
+              value={setupDraft.context_summary || ''}
+              onChange={(event) => updateSetupDraft({ context_summary: event.target.value })}
+              rows={3}
+            />
+          </label>
+          <label className="field">
+            <span>Lore</span>
+            <textarea
+              value={setupDraft.lore_text || ''}
+              onChange={(event) => updateSetupDraft({ lore_text: event.target.value })}
+              rows={4}
+            />
+          </label>
+          <label className="field">
+            <span>Preferences</span>
+            <textarea
+              value={listToText(setupDraft.play_preferences)}
+              onChange={(event) => updateSetupDraft({ play_preferences: textToList(event.target.value) })}
+              rows={4}
+            />
+          </label>
+          <label className="field checkbox-field">
+            <input
+              checked={setupDraft.allow_inference}
+              onChange={(event) => updateSetupDraft({ allow_inference: event.target.checked })}
+              type="checkbox"
+            />
+            <span>Allow inference</span>
           </label>
           <label className="field">
             <span>PC Name</span>
             <input
-              value={bootstrap.pcName}
-              onChange={(event) => setBootstrap({ ...bootstrap, pcName: event.target.value })}
+              value={setupDraft.player_character.name || ''}
+              onChange={(event) => updatePlayerDraft({ name: event.target.value })}
             />
           </label>
           <label className="field">
             <span>PC Concept</span>
             <textarea
-              value={bootstrap.pcConcept}
-              onChange={(event) => setBootstrap({ ...bootstrap, pcConcept: event.target.value })}
+              value={setupDraft.player_character.concept || ''}
+              onChange={(event) => updatePlayerDraft({ concept: event.target.value })}
               rows={3}
             />
           </label>
-          <button disabled={busy} type="submit">
-            <ListChecks size={17} />
-            <span>Bootstrap</span>
-          </button>
-        </form>
+          <label className="field">
+            <span>PC Goals</span>
+            <textarea
+              value={listToText(setupDraft.player_character.goals)}
+              onChange={(event) => updatePlayerDraft({ goals: textToList(event.target.value) })}
+              rows={3}
+            />
+          </label>
+          <label className="field">
+            <span>PC Edges</span>
+            <textarea
+              value={listToText(setupDraft.player_character.edges)}
+              onChange={(event) => updatePlayerDraft({ edges: textToList(event.target.value) })}
+              rows={3}
+            />
+          </label>
+          <label className="field">
+            <span>PC Complications</span>
+            <textarea
+              value={listToText(setupDraft.player_character.complications)}
+              onChange={(event) => updatePlayerDraft({ complications: textToList(event.target.value) })}
+              rows={3}
+            />
+          </label>
+        </section>
+
+        {setupReview && (
+          <section className="panel">
+            <div className="section-title">
+              <CheckCircle2 size={16} />
+              <span>Review</span>
+            </div>
+            <div className={setupReview.ready_to_bootstrap ? 'status ok' : 'status warn'}>
+              <Activity size={15} />
+              <span>{setupReview.ready_to_bootstrap ? 'Ready' : 'Needs edits'}</span>
+            </div>
+            {setupReview.summary && (
+              <div className="review-card">
+                <strong>{setupReview.summary.title}</strong>
+                <p>{setupReview.summary.premise}</p>
+                <p>{setupReview.summary.opening_hook}</p>
+              </div>
+            )}
+            {setupReview.findings.length > 0 && (
+              <div className="finding-list">
+                {setupReview.findings.map((finding, index) => (
+                  <div className={`finding ${finding.severity}`} key={`${finding.field}:${index}`}>
+                    <span>{finding.field}</span>
+                    <p>{finding.message}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
 
         <section className="panel">
           <div className="section-title">

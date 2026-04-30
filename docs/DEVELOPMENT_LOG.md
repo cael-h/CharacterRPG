@@ -3,6 +3,11 @@
 This file tracks progress, choices, and reminders so work can resume with fresh context.
 
 ## 2026-04-30
+- Assisted setup + review-before-play:
+  - Added `POST /setup/review` to validate and preview a `CampaignBootstrapRequest` without writing campaign files.
+  - Replaced the web one-shot bootstrap form with a setup assistant chat, editable draft fields, review findings, and an approve-to-bootstrap action.
+  - Setup assistant responses now preserve existing draft fields and preferences when the model omits them, including mature-content preferences.
+  - Verified the end-to-end setup flow with Aion 2: draft update, review preview, and bootstrap into isolated storage.
 - Aion 2 / Venice playtest:
   - Ran isolated playtest campaigns under `storage/aion-playtest-20260430*` using Venice model `aion-labs-aion-2-0`.
   - First pass showed good noir prose and natural adult tension, but also exposed three reliability issues: OOC preference updates could trigger campaign rewrites, Aion sometimes leaked hidden planning text, and long Aion completions could hit the provider timeout.

@@ -1,7 +1,12 @@
 from fastapi import APIRouter, HTTPException
 
-from backend.app.models.setup import CampaignSetupRequest, CampaignSetupResponse
-from backend.app.services.setup_assistant import generate_setup_response
+from backend.app.models.setup import (
+    CampaignSetupRequest,
+    CampaignSetupResponse,
+    CampaignSetupReviewRequest,
+    CampaignSetupReviewResponse,
+)
+from backend.app.services.setup_assistant import generate_setup_response, review_setup_draft
 
 
 router = APIRouter(prefix="/setup", tags=["setup"])
@@ -20,3 +25,13 @@ def respond_setup(request: CampaignSetupRequest) -> CampaignSetupResponse:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post(
+    "/review",
+    response_model=CampaignSetupReviewResponse,
+    operation_id="reviewCampaignSetupDraft",
+    summary="Preview and validate a campaign setup draft before bootstrapping.",
+)
+def review_setup(request: CampaignSetupReviewRequest) -> CampaignSetupReviewResponse:
+    return review_setup_draft(request)

@@ -4,7 +4,11 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from backend.app.models.bootstrap import CampaignBootstrapRequest
+from backend.app.models.bootstrap import (
+    CampaignBootstrapRequest,
+    CampaignBootstrapSummary,
+    CampaignBundle,
+)
 
 
 class SetupChatMessage(BaseModel):
@@ -27,4 +31,24 @@ class CampaignSetupResponse(BaseModel):
     draft: CampaignBootstrapRequest
     ready_to_bootstrap: bool = False
     missing_fields: list[str] = Field(default_factory=list)
+    lore_sources: list[str] = Field(default_factory=list)
+
+
+class CampaignSetupReviewRequest(BaseModel):
+    draft: CampaignBootstrapRequest = Field(default_factory=CampaignBootstrapRequest)
+
+
+class CampaignSetupReviewFinding(BaseModel):
+    severity: Literal["info", "warning", "critical"]
+    field: str
+    message: str
+
+
+class CampaignSetupReviewResponse(BaseModel):
+    ready_to_bootstrap: bool = False
+    missing_fields: list[str] = Field(default_factory=list)
+    campaign_id: str | None = None
+    summary: CampaignBootstrapSummary | None = None
+    preview: CampaignBundle | None = None
+    findings: list[CampaignSetupReviewFinding] = Field(default_factory=list)
     lore_sources: list[str] = Field(default_factory=list)

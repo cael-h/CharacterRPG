@@ -43,6 +43,7 @@ Runtime storage defaults to `storage/CharacterRPG_Generated_Files/`.
 - `GET /providers`
 - `POST /providers/test`
 - `POST /setup/respond`
+- `POST /setup/review`
 - `POST /campaign/bootstrap`
 - `GET /campaign/bundle`
 - `POST /play/respond`

@@ -344,7 +344,8 @@ button:disabled {
   border-top: 1px solid var(--line);
 }
 
-.composer textarea {
+.composer textarea,
+.setup-compose textarea {
   min-height: 74px;
   resize: vertical;
 }
@@ -362,7 +363,8 @@ button:disabled {
 .field input,
 .field select,
 .field textarea,
-.composer textarea {
+.composer textarea,
+.setup-compose textarea {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -377,9 +379,131 @@ button:disabled {
 .field input:focus,
 .field select:focus,
 .field textarea:focus,
-.composer textarea:focus {
+.composer textarea:focus,
+.setup-compose textarea:focus {
   border-color: var(--teal);
   box-shadow: 0 0 0 3px rgba(18, 108, 97, 0.13);
+}
+
+.setup-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.setup-chat {
+  display: grid;
+  gap: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.setup-message {
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.setup-message.user {
+  border-color: #c6d7e2;
+  background: #f4f8fb;
+}
+
+.setup-message.assistant {
+  border-color: #cad8ce;
+  background: #f7faf5;
+}
+
+.setup-message span,
+.finding span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--teal-dark);
+  font-size: 12px;
+  font-weight: 760;
+  line-height: 1.2;
+}
+
+.setup-message p,
+.review-card p,
+.finding p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.setup-compose {
+  display: grid;
+  gap: 8px;
+}
+
+.button-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.button-row > button:not(.secondary-button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 8px;
+  background: var(--teal);
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 760;
+}
+
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.checkbox-field input {
+  width: 16px;
+  height: 16px;
+}
+
+.review-card,
+.finding {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.review-card strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.finding-list {
+  display: grid;
+  gap: 8px;
+}
+
+.finding.info {
+  border-color: #c7d9e6;
+  background: #f4f8fb;
+}
+
+.finding.warning {
+  border-color: #e5d0a8;
+  background: #fff9eb;
+}
+
+.finding.critical {
+  border-color: #e2b7b0;
+  background: #fff3f1;
 }
 
 .status {
