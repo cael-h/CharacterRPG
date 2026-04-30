@@ -127,7 +127,7 @@ class Settings:
             venice_base_url=venice_base_url,
             venice_model=os.getenv("CHARACTERRPG_VENICE_MODEL")
             or os.getenv("VENICE_MODEL")
-            or "venice-uncensored-role-play",
+            or "aion-labs-aion-2-0",
             ollama_base_url=(os.getenv("CHARACTERRPG_OLLAMA_BASE_URL") or os.getenv("OLLAMA_BASE") or "http://localhost:11434").rstrip("/"),
             ollama_model=os.getenv("CHARACTERRPG_OLLAMA_MODEL") or os.getenv("OLLAMA_MODEL", "llama3.1:8b-instruct"),
             huggingface_api_key=os.getenv("CHARACTERRPG_HUGGINGFACE_API_KEY") or os.getenv("HF_TOKEN"),
