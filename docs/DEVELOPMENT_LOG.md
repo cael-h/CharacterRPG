@@ -35,6 +35,14 @@ Blocked / To do next
 - Implement avatars in client UI; add BYOK settings screen and usage tracker store.
 - Usage tracker counters and cost estimates in client; server echo of token counts later.
 
+## 2026-04-30
+- Added persistent runtime settings for provider, model, choice prompts, mature-content handling, and operator runtime notes at the campaign/session level.
+- Wired the web provider panel to load, save, and test runtime settings; new campaigns auto-save the current runtime preferences after bootstrap.
+- Added structured play-turn output for capable models: player-facing reply plus conservative updates for world state, timeline, recap, quests, event queue, and NPC memory notes. Plain prose gets one safe structured-repair attempt before falling back to transcript-only persistence.
+- Hardened Aion/Venice play behavior by retrying hidden-planning/placeholder replies and stripping model-leaked OOC mechanics notes from transcript replies.
+- Fixed new named sessions so they initialize from the selected campaign bundle instead of the neutral root bundle.
+- Verification: backend pytest passes, web production build passes, and real Aion 2 smokes produced in-scene responses. One Aion run returned parseable structured updates that persisted state/timeline/notes; a later run exercised the prose fallback with no OOC mechanics leak. One repeat call hit Venice rate limiting with HTTP 429 during testing.
+
 Later on 2025-08-31
 - Added slash command parsing server-side; records `/LLM`, `/<NPCName>`, and `/scene` in `turns.meta_json`.
 - Hooked up Timeline Manager; NPC replies create simple per-character events; `/scene` notes add global events.

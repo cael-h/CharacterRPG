@@ -29,6 +29,51 @@ class LocalPlayRequest(BaseModel):
     include_choices: bool = False
 
 
+class RuntimeSettings(BaseModel):
+    provider: str | None = None
+    model: str | None = None
+    include_choices: bool = False
+    mature_content_enabled: bool = True
+    notes: str | None = None
+
+
+class RuntimeSettingsRequest(RuntimeSettings):
+    campaign_id: str | None = None
+    session_id: str | None = None
+
+
+class PlayStateUpdates(BaseModel):
+    current_scene: str | None = None
+    location: str | None = None
+    time_of_day: str | None = None
+    world_pressure: int | None = Field(default=None, ge=0, le=10)
+    pressure_clock: int | None = Field(default=None, ge=0, le=6)
+    notes_append: list[str] = Field(default_factory=list)
+
+
+class PlayEventQueueUpdates(BaseModel):
+    add: list[str] = Field(default_factory=list)
+    remove: list[str] = Field(default_factory=list)
+
+
+class PlayQuestUpdate(BaseModel):
+    quest_id: str | None = None
+    title: str | None = None
+    status: str | None = None
+    summary: str | None = None
+    source_faction: str | None = None
+
+
+class StructuredPlayTurn(BaseModel):
+    reply: str = Field(min_length=1)
+    state_updates: PlayStateUpdates = Field(default_factory=PlayStateUpdates)
+    timeline_entries: list[str] = Field(default_factory=list)
+    recap_delta: str | None = None
+    quest_updates: list[PlayQuestUpdate] = Field(default_factory=list)
+    event_queue_updates: PlayEventQueueUpdates = Field(default_factory=PlayEventQueueUpdates)
+    npc_memory_notes: list[str] = Field(default_factory=list)
+
+
 class LocalPlayResponse(BaseModel):
     campaign_id: str
     session_id: str

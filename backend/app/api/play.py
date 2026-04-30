@@ -10,6 +10,8 @@ from backend.app.models.play import (
     PlayCampaignSummary,
     PlaySessionSummary,
     PlayTranscriptEntry,
+    RuntimeSettings,
+    RuntimeSettingsRequest,
 )
 from backend.app.models.review import SessionReviewRequest, SessionReviewResponse
 from backend.app.models.transcript_memory import (
@@ -88,6 +90,38 @@ def get_play_history(
 ) -> list[PlayTranscriptEntry]:
     active_storage = _resolve_storage(session_id, campaign_id)
     return active_storage.load_play_history(limit=limit)
+
+
+@router.get(
+    "/runtime-settings",
+    response_model=RuntimeSettings,
+    operation_id="getRuntimeSettings",
+    summary="Get saved provider/model runtime settings for a campaign or session.",
+)
+def get_runtime_settings(
+    campaign_id: str | None = Query(default=None),
+    session_id: str | None = Query(default=None),
+) -> RuntimeSettings:
+    return _resolve_storage(session_id, campaign_id).load_runtime_settings()
+
+
+@router.post(
+    "/runtime-settings",
+    response_model=RuntimeSettings,
+    operation_id="saveRuntimeSettings",
+    summary="Save provider/model runtime settings for a campaign or session.",
+)
+def save_runtime_settings(request: RuntimeSettingsRequest) -> RuntimeSettings:
+    target_storage = _resolve_storage(request.session_id, request.campaign_id)
+    runtime_settings = RuntimeSettings(
+        provider=request.provider,
+        model=request.model,
+        include_choices=request.include_choices,
+        mature_content_enabled=request.mature_content_enabled,
+        notes=request.notes,
+    )
+    target_storage.save_runtime_settings(runtime_settings)
+    return runtime_settings
 
 
 @router.post(

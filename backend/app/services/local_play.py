@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import re
 from datetime import UTC, datetime
 from functools import lru_cache
 from typing import Any, Protocol
@@ -7,14 +9,24 @@ from typing import Any, Protocol
 import yaml
 
 from backend.app.config import PROJECT_ROOT, settings
-from backend.app.model_utils import model_dump
+from backend.app.model_utils import model_dump, model_validate
 from backend.app.models.bootstrap import CampaignBundle
-from backend.app.models.play import LocalPlayRequest, LocalPlayResponse, PlaySessionSummary, PlayTranscriptEntry
+from backend.app.models.play import (
+    LocalPlayRequest,
+    LocalPlayResponse,
+    PlayQuestUpdate,
+    PlaySessionSummary,
+    PlayTranscriptEntry,
+    RuntimeSettings,
+    StructuredPlayTurn,
+)
+from backend.app.models.quest import QuestState
 from backend.app.services.campaign_storage import CampaignStorage
 from backend.app.services.model_providers import (
     ModelMessage,
     ModelProviderError,
     ModelRequest,
+    ModelResponse,
     generate_model_text,
 )
 
@@ -95,6 +107,7 @@ def _build_runtime_instructions(
     bundle: CampaignBundle,
     *,
     session_summary: PlaySessionSummary | None = None,
+    runtime_settings: RuntimeSettings | None = None,
     include_choices: bool = False,
 ) -> str:
     base_instructions = load_gpt_instructions()
@@ -108,6 +121,16 @@ def _build_runtime_instructions(
     player_character_policy = (
         f"- Current player character: {player_character}. The user controls this character. Do not rename them, speak for them, emote for them, or reuse their name for an NPC.\n"
         if player_character
+        else ""
+    )
+    mature_policy = (
+        "- Mature/NSFW material is enabled for this runtime. Allow consenting-adult themes when they naturally follow from the story; do not force them. Never include sexual content involving minors or sexual violence.\n"
+        if runtime_settings and runtime_settings.mature_content_enabled
+        else ""
+    )
+    runtime_notes = (
+        f"\nOPERATOR RUNTIME NOTES\n{runtime_settings.notes.strip()}\n"
+        if runtime_settings and runtime_settings.notes and runtime_settings.notes.strip()
         else ""
     )
     return (
@@ -124,7 +147,25 @@ def _build_runtime_instructions(
         "- Drive the scene forward. NPCs and the environment should take small but meaningful actions, offer invitations, interrupt, reveal, complicate, or emotionally escalate when appropriate instead of only reacting passively.\n"
         "- Do not merely paraphrase the player's move and ask what happens next. Advance the moment while preserving player agency.\n"
         f"{player_character_policy}"
+        f"{mature_policy}"
         f"{choice_policy}"
+        "\nSTRUCTURED TURN OUTPUT\n"
+        "- Return exactly one JSON object and no markdown fences.\n"
+        "- The `reply` field is the only player-facing text shown in the transcript.\n"
+        "- Do not put [OOC], GM notes, mechanics notes, JSON, or state bookkeeping in `reply`; put changed facts in the update fields.\n"
+        "- Use update fields only for concrete changes established by this turn. Leave fields empty when nothing changed.\n"
+        "- Keep state updates conservative. Do not close quests, move location, or change pressure unless the reply actually establishes it.\n"
+        "- JSON shape:\n"
+        "{\n"
+        '  "reply": "player-facing narration and dialogue only",\n'
+        '  "state_updates": {"current_scene": null, "location": null, "time_of_day": null, "world_pressure": null, "pressure_clock": null, "notes_append": []},\n'
+        '  "timeline_entries": [],\n'
+        '  "recap_delta": null,\n'
+        '  "quest_updates": [{"quest_id": null, "title": "string", "status": "open|closed|changed", "summary": "string", "source_faction": "string"}],\n'
+        '  "event_queue_updates": {"add": [], "remove": []},\n'
+        '  "npc_memory_notes": []\n'
+        "}\n"
+        f"{runtime_notes}"
         "\nCURRENT CAMPAIGN BUNDLE\n"
         f"{campaign_context}"
     )
@@ -146,6 +187,7 @@ def _looks_like_hidden_planning(text: str) -> bool:
     starts = (
         "okay, i'm going to",
         "ok, i'm going to",
+        "i will write",
         "i'm going to write",
         "i need to write",
         "i should write",
@@ -156,6 +198,7 @@ def _looks_like_hidden_planning(text: str) -> bool:
         "the user's prompt",
         "the user prompt",
         "write a response",
+        "response prose here",
         "i should describe",
         "i need to advance the scene",
         "in the established style",
@@ -164,9 +207,16 @@ def _looks_like_hidden_planning(text: str) -> bool:
     return any(marker in lowered for marker in markers)
 
 
-def _generate_with_retry_on_hidden_planning(request: ModelRequest) -> Any:
+def _model_response_looks_like_hidden_planning(text: str) -> bool:
+    if _looks_like_hidden_planning(text):
+        return True
+    structured_turn = _parse_structured_turn(text)
+    return structured_turn is not None and _looks_like_hidden_planning(structured_turn.reply)
+
+
+def _generate_with_retry_on_hidden_planning(request: ModelRequest) -> ModelResponse:
     response = generate_model_text(request)
-    if not _looks_like_hidden_planning(response.text):
+    if not _model_response_looks_like_hidden_planning(response.text):
         return response
 
     retry_response = generate_model_text(
@@ -187,9 +237,190 @@ def _generate_with_retry_on_hidden_planning(request: ModelRequest) -> Any:
             messages=request.messages,
         )
     )
-    if _looks_like_hidden_planning(retry_response.text):
+    if _model_response_looks_like_hidden_planning(retry_response.text):
         raise ModelProviderError("Model returned hidden planning text after one repair attempt.")
     return retry_response
+
+
+def _generate_with_structured_repair(request: ModelRequest) -> tuple[ModelResponse, StructuredPlayTurn | None]:
+    response = _generate_with_retry_on_hidden_planning(request)
+    structured_turn = _parse_structured_turn(response.text)
+    if structured_turn is not None or (request.provider or settings.default_provider) == "mock":
+        return response, structured_turn
+
+    try:
+        repair_response = _generate_with_retry_on_hidden_planning(
+            ModelRequest(
+                provider=request.provider,
+                model=request.model,
+                api_key=request.api_key,
+                base_url=request.base_url,
+                temperature=request.temperature,
+                instructions=(
+                    f"{request.instructions}\n\n"
+                    "STRUCTURED OUTPUT REPAIR\n"
+                    "- The prior attempt produced a usable GM reply but did not follow the required JSON contract.\n"
+                    "- Convert the prior response below into exactly one JSON object using the required schema.\n"
+                    "- Preserve the player-facing narration and dialogue in `reply`.\n"
+                    "- Use empty arrays and null state fields when the prior response did not establish a concrete update.\n"
+                    "- Return JSON only, with no markdown fences.\n\n"
+                    "PRIOR NON-JSON RESPONSE\n"
+                    f"{response.text[:5000]}"
+                ),
+                messages=request.messages,
+            )
+        )
+    except ModelProviderError:
+        return response, None
+
+    repaired_turn = _parse_structured_turn(repair_response.text)
+    if repaired_turn is None:
+        return response, None
+    return repair_response, repaired_turn
+
+
+def _extract_json_object(text: str) -> dict[str, Any] | None:
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        lines = stripped.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].startswith("```"):
+            lines = lines[:-1]
+        stripped = "\n".join(lines).strip()
+
+    start = stripped.find("{")
+    end = stripped.rfind("}")
+    if start == -1 or end == -1 or end < start:
+        return None
+    try:
+        payload = json.loads(stripped[start : end + 1])
+    except json.JSONDecodeError:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _parse_structured_turn(text: str) -> StructuredPlayTurn | None:
+    payload = _extract_json_object(text)
+    if payload is None or "reply" not in payload:
+        return None
+    try:
+        turn = model_validate(StructuredPlayTurn, payload)
+    except Exception:
+        return None
+    return turn
+
+
+def _clean_player_facing_reply(text: str) -> str:
+    lines: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.lower().startswith(("[ooc:", "(ooc:", "ooc:")):
+            continue
+        lines.append(line)
+    return "\n".join(lines).strip()
+
+
+def _clean_update_entries(entries: list[str], *, max_entries: int = 8) -> list[str]:
+    cleaned: list[str] = []
+    for entry in entries:
+        value = " ".join(str(entry).split()).strip()
+        if value and value not in cleaned:
+            cleaned.append(value)
+        if len(cleaned) >= max_entries:
+            break
+    return cleaned
+
+
+def _apply_quest_update(
+    quests: list[QuestState],
+    update: PlayQuestUpdate,
+    *,
+    next_turn: int,
+) -> None:
+    title = (update.title or "").strip()
+    summary = (update.summary or "").strip()
+    quest_id = (update.quest_id or "").strip()
+    target: QuestState | None = None
+    if quest_id:
+        target = next((quest for quest in quests if quest.quest_id == quest_id), None)
+    if target is None and title:
+        target = next((quest for quest in quests if quest.title.lower() == title.lower()), None)
+
+    if target is None:
+        if not title or not summary:
+            return
+        base_id = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-") or "quest"
+        existing_ids = {quest.quest_id for quest in quests}
+        candidate_id = quest_id or f"{base_id}-{next_turn}"
+        suffix = 2
+        while candidate_id in existing_ids:
+            candidate_id = f"{base_id}-{next_turn}-{suffix}"
+            suffix += 1
+        quests.append(
+            QuestState(
+                quest_id=candidate_id,
+                title=title,
+                status=(update.status or "open").strip() or "open",
+                summary=summary,
+                source_faction=(update.source_faction or "unknown").strip() or "unknown",
+                created_turn=next_turn,
+            )
+        )
+        return
+
+    if update.status and update.status.strip():
+        target.status = update.status.strip()
+    if summary:
+        target.summary = summary
+    if update.source_faction and update.source_faction.strip():
+        target.source_faction = update.source_faction.strip()
+
+
+def _apply_structured_turn_updates(
+    bundle: CampaignBundle,
+    structured_turn: StructuredPlayTurn | None,
+    *,
+    next_turn: int,
+) -> None:
+    if structured_turn is None:
+        return
+
+    updates = structured_turn.state_updates
+    if updates.current_scene and updates.current_scene.strip():
+        bundle.world_state.current_scene = updates.current_scene.strip()
+    if updates.location and updates.location.strip():
+        bundle.world_state.location = updates.location.strip()
+    if updates.time_of_day and updates.time_of_day.strip():
+        bundle.world_state.time_of_day = updates.time_of_day.strip()
+    if updates.world_pressure is not None:
+        bundle.world_state.world_pressure = updates.world_pressure
+    if updates.pressure_clock is not None:
+        bundle.world_state.pressure_clock = updates.pressure_clock
+
+    for note in _clean_update_entries(updates.notes_append + structured_turn.npc_memory_notes):
+        formatted = f"Turn {next_turn}: {note}"
+        if formatted not in bundle.world_state.notes:
+            bundle.world_state.notes.append(formatted)
+
+    for entry in _clean_update_entries(structured_turn.timeline_entries):
+        bundle.timeline.append(f"Turn {next_turn}: {entry}")
+
+    if structured_turn.recap_delta and structured_turn.recap_delta.strip():
+        recap_delta = structured_turn.recap_delta.strip()
+        bundle.recap = f"{bundle.recap.strip()}\n\nTurn {next_turn}: {recap_delta}".strip()
+
+    for event in _clean_update_entries(structured_turn.event_queue_updates.remove):
+        bundle.event_queue = [existing for existing in bundle.event_queue if existing != event]
+    for event in _clean_update_entries(structured_turn.event_queue_updates.add):
+        if event not in bundle.event_queue:
+            bundle.event_queue.append(event)
+
+    for quest_update in structured_turn.quest_updates:
+        _apply_quest_update(bundle.quests, quest_update, next_turn=next_turn)
+
+    bundle.world_state.active_quests = bundle.quests
+    bundle.world_state.pending_events = bundle.event_queue
 
 
 def _extract_output_text(payload: dict[str, Any]) -> str:
@@ -260,6 +491,10 @@ def resolve_play_storage(request: LocalPlayRequest, storage: CampaignStorage) ->
         parent_summary = source_storage.load_session_summary()
         parent_session_id = parent_summary.session_id
         resolved_campaign_id = resolved_campaign_id or parent_summary.campaign_id
+    elif resolved_campaign_id:
+        source_storage = storage.for_campaign(resolved_campaign_id)
+        if not source_storage.has_bundle():
+            raise ValueError(f'Campaign {resolved_campaign_id!r} does not exist.')
     elif not resolved_campaign_id and storage.has_bundle():
         resolved_campaign_id = storage.load_bundle().world_state.campaign_id
 
@@ -272,6 +507,18 @@ def resolve_play_storage(request: LocalPlayRequest, storage: CampaignStorage) ->
         fork_from_turn=request.fork_from_turn,
     )
     return created_storage, created_storage.load_session_summary()
+
+
+def _resolve_runtime_settings(
+    active_storage: CampaignStorage,
+    storage: CampaignStorage,
+    session_summary: PlaySessionSummary | None,
+) -> RuntimeSettings:
+    has_active_settings = active_storage.runtime_settings_path.exists()
+    runtime_settings = active_storage.load_runtime_settings()
+    if session_summary is not None and not has_active_settings:
+        runtime_settings = storage.for_campaign(session_summary.campaign_id).load_runtime_settings()
+    return runtime_settings
 
 
 def generate_local_play_response(
@@ -287,13 +534,17 @@ def generate_local_play_response(
     bundle = active_storage.load_bundle()
     history_limit = request.max_history_turns * 2 if request.max_history_turns else 0
     history = active_storage.load_play_history(limit=history_limit) if history_limit else []
-    model = request.model or settings.default_model
-    provider = request.provider or settings.default_provider
+    runtime_settings = _resolve_runtime_settings(active_storage, storage, session_summary)
+    model = request.model or runtime_settings.model or settings.default_model
+    provider = request.provider or runtime_settings.provider or settings.default_provider
+    include_choices = request.include_choices or runtime_settings.include_choices
     instructions = _build_runtime_instructions(
         bundle,
         session_summary=session_summary,
-        include_choices=request.include_choices,
+        runtime_settings=runtime_settings,
+        include_choices=include_choices,
     )
+    structured_turn: StructuredPlayTurn | None = None
     if _is_ooc_message(user_message):
         reply = "[OOC: Understood. I'll apply that preference going forward and keep the saved campaign facts unchanged.]"
         resolved_provider = "local"
@@ -309,15 +560,18 @@ def generate_local_play_response(
         )
         if getattr(response, "status_code", 200) >= 400:
             raise RuntimeError(_extract_error_message(response.json()))
-        reply = _extract_output_text(response.json())
+        output_text = _extract_output_text(response.json())
+        structured_turn = _parse_structured_turn(output_text)
+        reply = structured_turn.reply if structured_turn is not None else output_text
+        reply = _clean_player_facing_reply(reply)
         resolved_provider = "client"
         resolved_model = model
     else:
         try:
-            model_response = _generate_with_retry_on_hidden_planning(
+            model_response, structured_turn = _generate_with_structured_repair(
                 ModelRequest(
                     provider=provider,
-                    model=request.model,
+                    model=request.model or runtime_settings.model,
                     api_key=request.provider_api_key,
                     base_url=request.provider_base_url,
                     instructions=instructions,
@@ -329,7 +583,8 @@ def generate_local_play_response(
             )
         except ModelProviderError as exc:
             raise RuntimeError(str(exc)) from exc
-        reply = model_response.text
+        reply = structured_turn.reply if structured_turn is not None else model_response.text
+        reply = _clean_player_facing_reply(reply)
         resolved_provider = model_response.provider
         resolved_model = model_response.model
     if not reply:
@@ -355,8 +610,9 @@ def generate_local_play_response(
             ),
         ]
         active_storage.append_play_history(entries)
+        _apply_structured_turn_updates(bundle, structured_turn, next_turn=next_turn)
         bundle.world_state.turn = next_turn
-        active_storage.save_world_state(bundle.world_state)
+        active_storage.save_bundle(bundle)
 
         from backend.app.models.transcript_memory import TranscriptMemoryBuildRequest
         from backend.app.services.transcript_memory import build_transcript_memory_index

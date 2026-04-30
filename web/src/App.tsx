@@ -129,6 +129,14 @@ type SetupReviewResponse = {
   lore_sources: string[];
 };
 
+type RuntimeSettings = {
+  provider?: string | null;
+  model?: string | null;
+  include_choices: boolean;
+  mature_content_enabled: boolean;
+  notes?: string | null;
+};
+
 type Toast = { tone: 'info' | 'error' | 'success'; message: string } | null;
 
 const API_BASE = 'http://127.0.0.1:4100';
@@ -204,12 +212,23 @@ function App() {
   const [setupInput, setSetupInput] = useState(initialSetupPrompt);
   const [setupConversation, setSetupConversation] = useState<SetupChatMessage[]>([]);
   const [setupReview, setSetupReview] = useState<SetupReviewResponse | null>(null);
+  const [includeChoices, setIncludeChoices] = useState(false);
+  const [matureContentEnabled, setMatureContentEnabled] = useState(true);
+  const [runtimeNotes, setRuntimeNotes] = useState('');
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<Toast>(null);
 
   const selectedProviderInfo = useMemo(
     () => providers.find((provider) => provider.provider === selectedProvider),
     [providers, selectedProvider],
+  );
+
+  const selectedSessionInfo = useMemo(
+    () =>
+      sessions.find(
+        (session) => session.campaign_id === selectedCampaign && session.session_id === selectedSession,
+      ),
+    [selectedCampaign, selectedSession, sessions],
   );
 
   const api = useCallback(
@@ -280,6 +299,25 @@ function App() {
       setHistory([]);
     });
   }, [refreshActive]);
+
+  useEffect(() => {
+    if (!selectedCampaign) return;
+    const query = new URLSearchParams({ campaign_id: selectedCampaign });
+    if (selectedSessionInfo) query.set('session_id', selectedSessionInfo.session_id);
+    api<RuntimeSettings>(`/play/runtime-settings?${query.toString()}`)
+      .then((runtimeSettings) => {
+        if (runtimeSettings.provider) setSelectedProvider(runtimeSettings.provider);
+        if (runtimeSettings.model) setSelectedModel(runtimeSettings.model);
+        setIncludeChoices(runtimeSettings.include_choices);
+        setMatureContentEnabled(runtimeSettings.mature_content_enabled);
+        setRuntimeNotes(runtimeSettings.notes || '');
+      })
+      .catch(() => {
+        setIncludeChoices(false);
+        setMatureContentEnabled(true);
+        setRuntimeNotes('');
+      });
+  }, [api, selectedCampaign, selectedSessionInfo]);
 
   const updateSetupDraft = (patch: Partial<CampaignDraft>) => {
     setSetupReview(null);
@@ -375,8 +413,74 @@ function App() {
       });
       setSelectedCampaign(payload.campaign_id);
       setSelectedSession('main');
+      await api<RuntimeSettings>('/play/runtime-settings', {
+        method: 'POST',
+        body: JSON.stringify({
+          campaign_id: payload.campaign_id,
+          provider: selectedProvider || undefined,
+          model: selectedModel || undefined,
+          include_choices: includeChoices,
+          mature_content_enabled: matureContentEnabled,
+          notes: runtimeNotes || undefined,
+        }),
+      });
       setToast({ tone: 'success', message: `Bootstrapped ${payload.campaign_id}` });
       await refreshCatalog();
+    } catch (error) {
+      setToast({ tone: 'error', message: error instanceof Error ? error.message : String(error) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveRuntimeSettings = async () => {
+    if (!selectedCampaign) {
+      setToast({ tone: 'error', message: 'Select or bootstrap a campaign before saving runtime settings.' });
+      return;
+    }
+    setBusy(true);
+    setToast(null);
+    try {
+      const targetSessionId = selectedSessionInfo?.session_id;
+      await api<RuntimeSettings>('/play/runtime-settings', {
+        method: 'POST',
+        body: JSON.stringify({
+          campaign_id: selectedCampaign,
+          session_id: targetSessionId,
+          provider: selectedProvider || undefined,
+          model: selectedModel || undefined,
+          include_choices: includeChoices,
+          mature_content_enabled: matureContentEnabled,
+          notes: runtimeNotes || undefined,
+        }),
+      });
+      setToast({
+        tone: 'success',
+        message: targetSessionId ? `Saved runtime settings for ${targetSessionId}` : 'Saved campaign runtime settings',
+      });
+    } catch (error) {
+      setToast({ tone: 'error', message: error instanceof Error ? error.message : String(error) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const testProvider = async () => {
+    setBusy(true);
+    setToast(null);
+    try {
+      const payload = await api<{ provider: string; model: string; reply: string }>('/providers/test', {
+        method: 'POST',
+        body: JSON.stringify({
+          provider: selectedProvider || undefined,
+          model: selectedModel || undefined,
+          prompt: 'Reply with one short sentence confirming this model is ready for CharacterRPG.',
+        }),
+      });
+      setToast({
+        tone: 'success',
+        message: `${payload.provider} ${payload.model}: ${payload.reply.slice(0, 120)}`,
+      });
     } catch (error) {
       setToast({ tone: 'error', message: error instanceof Error ? error.message : String(error) });
     } finally {
@@ -412,6 +516,7 @@ function App() {
             session_title: sessionTitle,
             provider: selectedProvider || undefined,
             model: selectedModel || undefined,
+            include_choices: includeChoices,
             create_session_if_missing: true,
           }),
         },
@@ -618,6 +723,40 @@ function App() {
           <div className={selectedProviderInfo?.configured ? 'status ok' : 'status warn'}>
             <Activity size={15} />
             <span>{selectedProviderInfo?.configured ? 'Configured' : 'Needs configuration'}</span>
+          </div>
+          <label className="field checkbox-field">
+            <input
+              checked={includeChoices}
+              onChange={(event) => setIncludeChoices(event.target.checked)}
+              type="checkbox"
+            />
+            <span>Choice prompts</span>
+          </label>
+          <label className="field checkbox-field">
+            <input
+              checked={matureContentEnabled}
+              onChange={(event) => setMatureContentEnabled(event.target.checked)}
+              type="checkbox"
+            />
+            <span>Mature content enabled</span>
+          </label>
+          <label className="field">
+            <span>Runtime Notes</span>
+            <textarea
+              value={runtimeNotes}
+              onChange={(event) => setRuntimeNotes(event.target.value)}
+              rows={2}
+            />
+          </label>
+          <div className="button-row">
+            <button className="secondary-button" disabled={busy} onClick={testProvider} type="button">
+              <Activity size={16} />
+              <span>Test</span>
+            </button>
+            <button disabled={busy || !selectedCampaign} onClick={saveRuntimeSettings} type="button">
+              <CheckCircle2 size={17} />
+              <span>Save</span>
+            </button>
           </div>
         </section>
 

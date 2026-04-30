@@ -47,7 +47,24 @@ Runtime storage defaults to `storage/CharacterRPG_Generated_Files/`.
 - `POST /campaign/bootstrap`
 - `GET /campaign/bundle`
 - `POST /play/respond`
+- `GET /play/runtime-settings`
+- `POST /play/runtime-settings`
 - `GET /play/history`
 - `POST /play/review`
 - `POST /play/memory/index`
 - `POST /play/memory/search`
+
+## Runtime Play Notes
+
+`POST /play/runtime-settings` stores provider, model, choice-prompt, mature-content,
+and operator-note preferences for a campaign or a named session. `/play/respond`
+uses those saved settings when the request does not explicitly override provider
+or model. Mature-content handling defaults on, with guardrails for minors and
+sexual violence, so normal adult stakes do not make the runtime halt or steer away.
+
+Play turns ask capable models for a structured JSON turn with player-facing
+`reply` plus conservative updates for world state, timeline, recap, quest notes,
+event queue, and NPC memory. If a model returns normal prose instead, the backend
+tries one structured repair pass. If repair still fails or the provider is
+rate-limited, the reply still works and persistence falls back to transcript +
+turn count only.

@@ -12,7 +12,12 @@ from backend.app.model_utils import model_dump, model_validate
 from backend.app.models.bootstrap import CampaignBundle
 from backend.app.models.character import CharacterProfile
 from backend.app.models.faction import FactionState
-from backend.app.models.play import PlayCampaignSummary, PlaySessionSummary, PlayTranscriptEntry
+from backend.app.models.play import (
+    PlayCampaignSummary,
+    PlaySessionSummary,
+    PlayTranscriptEntry,
+    RuntimeSettings,
+)
 from backend.app.models.quest import QuestState
 from backend.app.models.scenario import ScenarioState
 from backend.app.models.transcript_memory import TranscriptMemorySection
@@ -101,6 +106,10 @@ class CampaignStorage:
     @property
     def transcript_memory_path(self) -> Path:
         return self.base_dir / 'transcript_memory.json'
+
+    @property
+    def runtime_settings_path(self) -> Path:
+        return self.base_dir / 'runtime_settings.json'
 
     @property
     def current_campaign_id(self) -> str:
@@ -270,6 +279,19 @@ class CampaignStorage:
             if not section.campaign_id:
                 section.campaign_id = campaign_id
         return sections
+
+    def save_runtime_settings(self, runtime_settings: RuntimeSettings) -> Path:
+        self.runtime_settings_path.write_text(
+            json.dumps(model_dump(runtime_settings), ensure_ascii=True, indent=2) + '\n',
+            encoding='utf-8',
+        )
+        return self.runtime_settings_path
+
+    def load_runtime_settings(self) -> RuntimeSettings:
+        if not self.runtime_settings_path.exists():
+            return RuntimeSettings()
+        payload = json.loads(self.runtime_settings_path.read_text(encoding='utf-8'))
+        return model_validate(RuntimeSettings, payload)
 
     def load_bundle(self) -> CampaignBundle:
         world_state = self.load_world_state()
@@ -635,6 +657,7 @@ class CampaignStorage:
             'recap.md',
             'play_history.jsonl',
             'transcript_memory.json',
+            'runtime_settings.json',
             'campaign.json',
             'session.json',
         ]
