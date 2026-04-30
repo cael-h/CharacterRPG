@@ -84,6 +84,13 @@ def _build_campaign_context(bundle: CampaignBundle, session_summary: PlaySession
     return yaml.safe_dump(payload, sort_keys=False).strip()
 
 
+def _player_character_name(bundle: CampaignBundle) -> str | None:
+    for character in bundle.rpg_characters:
+        if "player" in character.role.lower():
+            return character.name
+    return None
+
+
 def _build_runtime_instructions(
     bundle: CampaignBundle,
     *,
@@ -97,17 +104,26 @@ def _build_runtime_instructions(
         if not include_choices
         else '- Include a short, optional choice list at the end of the turn because this session explicitly asked for it.\n'
     )
+    player_character = _player_character_name(bundle)
+    player_character_policy = (
+        f"- Current player character: {player_character}. The user controls this character. Do not rename them, speak for them, emote for them, or reuse their name for an NPC.\n"
+        if player_character
+        else ""
+    )
     return (
         f"{base_instructions}\n\n"
         "LOCAL BACKEND EMULATION MODE\n"
         "- You are running through a local backend play endpoint for self-testing.\n"
         "- The backend campaign bundle below is the current source of truth.\n"
         "- Keep replies focused on the GM response only.\n"
+        "- Preserve the campaign title, setting, player character, NPC names, faction facts, and scene facts from the bundle unless the user explicitly changes them.\n"
         "- Do not claim files were updated unless the backend confirms persistence.\n"
         "- Treat any player message beginning with OOC: or [OOC: as an out-of-character rule or preference update. Acknowledge it briefly, follow it immediately, and do not turn it into an in-world action.\n"
+        "- Never reveal hidden planning, analysis, or response-writing notes. Do not mention the prompt, instructions, user prompt, established style, or what you intend to write.\n"
         "- Default to narrative judgment instead of dice unless the campaign preferences explicitly call for rolls in a specific case.\n"
         "- Drive the scene forward. NPCs and the environment should take small but meaningful actions, offer invitations, interrupt, reveal, complicate, or emotionally escalate when appropriate instead of only reacting passively.\n"
         "- Do not merely paraphrase the player's move and ask what happens next. Advance the moment while preserving player agency.\n"
+        f"{player_character_policy}"
         f"{choice_policy}"
         "\nCURRENT CAMPAIGN BUNDLE\n"
         f"{campaign_context}"
@@ -118,6 +134,62 @@ def _history_to_responses_input(history: list[PlayTranscriptEntry], user_message
     messages = [{"role": entry.role, "content": entry.content} for entry in history]
     messages.append({"role": "user", "content": user_message})
     return messages
+
+
+def _is_ooc_message(user_message: str) -> bool:
+    lowered = user_message.lstrip().lower()
+    return lowered.startswith("ooc:") or lowered.startswith("[ooc:")
+
+
+def _looks_like_hidden_planning(text: str) -> bool:
+    lowered = " ".join(text.lower().split())[:700]
+    starts = (
+        "okay, i'm going to",
+        "ok, i'm going to",
+        "i'm going to write",
+        "i need to write",
+        "i should write",
+    )
+    if lowered.startswith(starts):
+        return True
+    markers = (
+        "the user's prompt",
+        "the user prompt",
+        "write a response",
+        "i should describe",
+        "i need to advance the scene",
+        "in the established style",
+        "end with a prompt",
+    )
+    return any(marker in lowered for marker in markers)
+
+
+def _generate_with_retry_on_hidden_planning(request: ModelRequest) -> Any:
+    response = generate_model_text(request)
+    if not _looks_like_hidden_planning(response.text):
+        return response
+
+    retry_response = generate_model_text(
+        ModelRequest(
+            provider=request.provider,
+            model=request.model,
+            api_key=request.api_key,
+            base_url=request.base_url,
+            temperature=request.temperature,
+            instructions=(
+                f"{request.instructions}\n\n"
+                "OUTPUT REPAIR\n"
+                "- The prior attempt exposed hidden planning instead of a player-facing GM response.\n"
+                "- Rewrite the response as final narration and NPC dialogue only.\n"
+                "- Do not mention prompts, instructions, the user prompt, planning, analysis, or the act of writing.\n"
+                "- Preserve the existing campaign facts and player agency."
+            ),
+            messages=request.messages,
+        )
+    )
+    if _looks_like_hidden_planning(retry_response.text):
+        raise ModelProviderError("Model returned hidden planning text after one repair attempt.")
+    return retry_response
 
 
 def _extract_output_text(payload: dict[str, Any]) -> str:
@@ -222,7 +294,11 @@ def generate_local_play_response(
         session_summary=session_summary,
         include_choices=request.include_choices,
     )
-    if client is not None:
+    if _is_ooc_message(user_message):
+        reply = "[OOC: Understood. I'll apply that preference going forward and keep the saved campaign facts unchanged.]"
+        resolved_provider = "local"
+        resolved_model = "ooc-ack"
+    elif client is not None:
         response = client.post(
             "/responses",
             json={
@@ -238,7 +314,7 @@ def generate_local_play_response(
         resolved_model = model
     else:
         try:
-            model_response = generate_model_text(
+            model_response = _generate_with_retry_on_hidden_planning(
                 ModelRequest(
                     provider=provider,
                     model=request.model,

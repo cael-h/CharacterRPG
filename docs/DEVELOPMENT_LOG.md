@@ -2,6 +2,17 @@
 
 This file tracks progress, choices, and reminders so work can resume with fresh context.
 
+## 2026-04-30
+- Aion 2 / Venice playtest:
+  - Ran isolated playtest campaigns under `storage/aion-playtest-20260430*` using Venice model `aion-labs-aion-2-0`.
+  - First pass showed good noir prose and natural adult tension, but also exposed three reliability issues: OOC preference updates could trigger campaign rewrites, Aion sometimes leaked hidden planning text, and long Aion completions could hit the provider timeout.
+  - Hardened runtime behavior: OOC-only turns now get a local acknowledgement, runtime instructions explicitly preserve the saved campaign/PC facts, hidden-planning outputs get one repair retry before persistence, and model request timeout is configurable with a 180 second default.
+  - Final short playtest produced usable responses: Aion preserved the Sable Harbor/Liora/Cassian setup, handled mature implications without forcing explicit content, advanced investigation clues, and staged a violence interruption coherently.
+- Mature/NSFW product note:
+  - Mature/NSFW can be enabled for adult campaigns. This is permission for natural story flow, not a directive to force sexual content.
+  - The GM should not steer, flatten, or halt otherwise natural adult scenes solely to avoid mature implications.
+  - Hard guardrails remain: no sexual content involving minors and no sexual violence.
+
 ## 2025-08-31
 - Added docs suite (requirements, architecture, decisions, roadmap, implementation plan, billing/usage, interaction model, future work).
 - Integrated BYOK-only, Gemini defaults, usage tracking, avatars, text-first scope, transcript/memory/setting/snapshot/timeline mechanics, and slash commands.

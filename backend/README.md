@@ -22,6 +22,7 @@ Useful environment variables:
 
 - `CHARACTERRPG_PROVIDER=mock|openai_responses|openai_compatible|venice|ollama|huggingface`
 - `CHARACTERRPG_MODEL=gpt-4o-mini`
+- `CHARACTERRPG_MODEL_TIMEOUT_SECONDS=180`
 - `CHARACTERRPG_OPENAI_API_KEY=...` or `OPENAI_API_KEY=...` or `OPENAI_KEY=...`
 - `CHARACTERRPG_OPENAI_BASE_URL=https://api.openai.com/v1`
 - `CHARACTERRPG_VENICE_API_KEY=...` or `VENICE_API_KEY=...` or `VENICE_KEY=...`

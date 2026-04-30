@@ -8,6 +8,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SHARED_ENV_KEYS = {
     "CHARACTERRPG_MODEL",
+    "CHARACTERRPG_MODEL_TIMEOUT_SECONDS",
     "CHARACTERRPG_PROVIDER",
     "ROLEPLAYGPT_OPENAI_MODEL",
     "CHARACTERRPG_OPENAI_API_KEY",
@@ -82,6 +83,7 @@ class Settings:
     ollama_model: str
     huggingface_api_key: str | None
     huggingface_base_url: str | None
+    model_request_timeout_seconds: float
     google_drive_folder_id: str | None
     google_service_account_file: str | None
     root_path: str
@@ -133,6 +135,9 @@ class Settings:
             huggingface_api_key=os.getenv("CHARACTERRPG_HUGGINGFACE_API_KEY") or os.getenv("HF_TOKEN"),
             huggingface_base_url=(os.getenv("CHARACTERRPG_HUGGINGFACE_BASE_URL") or "").rstrip("/")
             or None,
+            model_request_timeout_seconds=float(
+                os.getenv("CHARACTERRPG_MODEL_TIMEOUT_SECONDS", "180")
+            ),
             google_drive_folder_id=os.getenv("GOOGLE_DRIVE_FOLDER_ID"),
             google_service_account_file=os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE"),
             root_path=_normalize_root_path(os.getenv("CHARACTERRPG_ROOT_PATH")),

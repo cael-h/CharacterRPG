@@ -141,3 +141,9 @@ Source: Derived from the architecture doc and transcript.
 - Context: Flashbacks and time jumps change ages mid-story.
 - Decision: Track `birth_year` and compute age at the current narrative time from the setting or timeline; include computed age in LLM system context.
 - Consequences: Accurate ages during flashbacks/forwards with minimal user effort (set `/scene time:` when needed).
+
+
+## D29: Mature content can remain enabled when explicitly preferred
+- Context: The desired experience should not feel artificially steered, flattened, or halted just because a scene has natural adult implications.
+- Decision: When campaign/user preferences enable mature or NSFW material, the GM prompt may allow consenting-adult themes and intimacy if they naturally follow from the story. This is permission, not a mandate: the model should not force sexual content as the point of play.
+- Consequences: Better story flow for adult campaigns while retaining hard guardrails: no sexual content involving minors and no sexual violence.

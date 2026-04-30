@@ -109,6 +109,14 @@ def _safe_json_response(response: Any) -> Any:
         return {"error": {"message": text or "Provider returned a non-JSON response."}}
 
 
+def _provider_request_error(provider: str, exc: Exception) -> ModelProviderError:
+    if exc.__class__.__name__.endswith("Timeout"):
+        return ModelProviderError(
+            f"{provider} request timed out after {settings.model_request_timeout_seconds:g} seconds."
+        )
+    return ModelProviderError(f"{provider} request failed: {exc}")
+
+
 def _mock_response(request: ModelRequest, provider: str, model: str) -> ModelResponse:
     if "campaign setup guide" in request.instructions:
         text = (
@@ -166,15 +174,18 @@ def _openai_responses(request: ModelRequest, provider: str, model: str) -> Model
     }
     if request.temperature is not None:
         body["temperature"] = request.temperature
-    with httpx.Client(timeout=60.0) as client:
-        response = client.post(
-            f"{base_url}/responses",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json=body,
-        )
+    try:
+        with httpx.Client(timeout=settings.model_request_timeout_seconds) as client:
+            response = client.post(
+                f"{base_url}/responses",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=body,
+            )
+    except Exception as exc:
+        raise _provider_request_error("OpenAI", exc) from exc
     payload = _safe_json_response(response)
     if response.status_code >= 400:
         raise ModelProviderError(_extract_error(payload, f"OpenAI request failed: {response.status_code}"))
@@ -205,15 +216,18 @@ def _openai_compatible(request: ModelRequest, provider: str, model: str) -> Mode
     }
     if request.temperature is not None:
         body["temperature"] = request.temperature
-    with httpx.Client(timeout=60.0) as client:
-        response = client.post(
-            f"{base_url}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json=body,
-        )
+    try:
+        with httpx.Client(timeout=settings.model_request_timeout_seconds) as client:
+            response = client.post(
+                f"{base_url}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=body,
+            )
+    except Exception as exc:
+        raise _provider_request_error(provider, exc) from exc
     payload = _safe_json_response(response)
     if response.status_code >= 400:
         raise ModelProviderError(
@@ -256,8 +270,11 @@ def _ollama(request: ModelRequest, provider: str, model: str) -> ModelResponse:
     }
     if request.temperature is not None:
         body["options"] = {"temperature": request.temperature}
-    with httpx.Client(timeout=120.0) as client:
-        response = client.post(f"{base_url}/api/generate", json=body)
+    try:
+        with httpx.Client(timeout=settings.model_request_timeout_seconds) as client:
+            response = client.post(f"{base_url}/api/generate", json=body)
+    except Exception as exc:
+        raise _provider_request_error("Ollama", exc) from exc
     payload = _safe_json_response(response)
     if response.status_code >= 400:
         raise ModelProviderError(_extract_error(payload, f"Ollama request failed: {response.status_code}"))
@@ -286,15 +303,18 @@ def _huggingface(request: ModelRequest, provider: str, model: str) -> ModelRespo
         "inputs": f"{request.instructions}\n\n{conversation}".strip(),
         "parameters": {"return_full_text": False},
     }
-    with httpx.Client(timeout=120.0) as client:
-        response = client.post(
-            base_url,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json=body,
-        )
+    try:
+        with httpx.Client(timeout=settings.model_request_timeout_seconds) as client:
+            response = client.post(
+                base_url,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=body,
+            )
+    except Exception as exc:
+        raise _provider_request_error("Hugging Face", exc) from exc
     payload = _safe_json_response(response)
     if response.status_code >= 400:
         raise ModelProviderError(

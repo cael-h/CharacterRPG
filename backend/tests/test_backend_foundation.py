@@ -10,7 +10,7 @@ from backend.app.models.bootstrap import CampaignBootstrapRequest, PlayerCharact
 from backend.app.models.play import LocalPlayRequest
 from backend.app.services.campaign_bootstrap import build_campaign_bundle
 from backend.app.services.campaign_storage import CampaignStorage
-from backend.app.services.local_play import generate_local_play_response
+from backend.app.services.local_play import _looks_like_hidden_planning, generate_local_play_response
 
 
 client = TestClient(app)
@@ -137,3 +137,43 @@ def test_local_play_mock_provider_persists_history(tmp_path: Path) -> None:
     assert response.transcript_entries_appended == 2
     assert storage.load_world_state().turn == 1
     assert len(storage.load_play_history()) == 2
+
+
+def test_ooc_play_turn_uses_local_ack_without_model_call(tmp_path: Path) -> None:
+    storage = CampaignStorage(tmp_path / "ooc-storage")
+    bundle = build_campaign_bundle(
+        CampaignBootstrapRequest(
+            story_name="OOC Test Campaign",
+            setting="A rainlit archive district",
+            genre_vibe="Urban fantasy intrigue",
+            player_character=PlayerCharacterInput(
+                name="Nera Vale",
+                concept="A courier with a dangerous memory for routes.",
+            ),
+        )
+    )
+    storage.save_bundle(bundle)
+
+    response = generate_local_play_response(
+        LocalPlayRequest(
+            user_message="OOC: Mature content can be enabled when natural to the story.",
+            provider="venice",
+        ),
+        storage,
+    )
+
+    assert response.provider == "local"
+    assert response.model == "ooc-ack"
+    assert response.turn == 1
+    assert "saved campaign facts unchanged" in response.reply
+    assert storage.load_world_state().turn == 1
+    assert len(storage.load_play_history()) == 2
+
+
+def test_hidden_planning_detector_flags_model_meta_text() -> None:
+    assert _looks_like_hidden_planning(
+        "Okay, I'm going to write a response to the user's prompt and end with a choice."
+    )
+    assert not _looks_like_hidden_planning(
+        '_Mira lowers her voice._ **Mira:** "The Court has been watching the room."'
+    )
