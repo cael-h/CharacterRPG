@@ -87,9 +87,17 @@ def list_providers() -> ProvidersResponse:
             notes="Hugging Face inference endpoint adapter.",
         ),
     ]
+    default_model = next(
+        (
+            provider.default_model
+            for provider in providers
+            if provider.provider == settings.default_provider
+        ),
+        settings.default_model,
+    )
     return ProvidersResponse(
         default_provider=settings.default_provider,
-        default_model=settings.default_model,
+        default_model=default_model,
         providers=providers,
     )
 

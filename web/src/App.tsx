@@ -129,8 +129,12 @@ function App() {
       api<SessionSummary[]>('/play/sessions'),
     ]);
     setProviders(providerPayload.providers);
-    setSelectedProvider((current) => current || providerPayload.default_provider);
-    setSelectedModel((current) => current || providerPayload.default_model);
+    const defaultProvider = providerPayload.default_provider;
+    const providerDefaultModel =
+      providerPayload.providers.find((provider) => provider.provider === defaultProvider)?.default_model ||
+      providerPayload.default_model;
+    setSelectedProvider((current) => current || defaultProvider);
+    setSelectedModel((current) => current || providerDefaultModel);
     setCampaigns(campaignPayload);
     setSessions(sessionPayload);
     if (!selectedCampaign && campaignPayload[0]?.campaign_id) {
