@@ -479,6 +479,44 @@ button:disabled {
   background: #fff;
 }
 
+.thread-list {
+  display: grid;
+  gap: 8px;
+}
+
+.thread-card {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.thread-card strong,
+.thread-card span {
+  display: block;
+}
+
+.thread-card strong {
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.thread-card span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.thread-card p {
+  margin: 0;
+  color: #2b3835;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .review-card strong {
   display: block;
   margin-bottom: 6px;

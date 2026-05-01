@@ -14,6 +14,7 @@ from backend.app.models.character import CharacterProfile
 from backend.app.models.faction import FactionState
 from backend.app.models.quest import QuestState
 from backend.app.models.scenario import ScenarioState
+from backend.app.models.story import StoryThread
 from backend.app.models.world_state import WorldState
 from backend.app.services.campaign_storage import CampaignStorage
 from backend.app.services.preset_library import get_named_preset, get_preset_defaults
@@ -177,6 +178,152 @@ def _lore_anchor(context_summary: str | None) -> str | None:
     if len(flattened) <= 220:
         return flattened
     return flattened[:217].rstrip() + "..."
+
+
+def _prefers_faction_frame(
+    genre_vibe: str,
+    context_summary: str | None,
+    play_preferences: list[str],
+) -> bool:
+    combined = " ".join([genre_vibe, context_summary or "", *play_preferences]).lower()
+    faction_opt_out = (
+        "no faction",
+        "without faction",
+        "not faction",
+        "solo",
+        "intimate",
+        "relationship",
+        "slice of life",
+        "personal drama",
+    )
+    if any(marker in combined for marker in faction_opt_out):
+        return False
+    faction_markers = (
+        "faction",
+        "politic",
+        "court",
+        "guild",
+        "gang",
+        "syndicate",
+        "empire",
+        "kingdom",
+        "rebellion",
+        "war",
+        "spy",
+        "conspiracy",
+        "corporate",
+        "cyberpunk",
+        "space opera",
+    )
+    return any(marker in combined for marker in faction_markers)
+
+
+def _story_thread_slug(campaign_id: str, suffix: str) -> str:
+    return f"{campaign_id}-{_slugify(suffix)}"
+
+
+def _primary_thread_type(genre_vibe: str, context_summary: str | None) -> str:
+    lowered = f"{genre_vibe} {context_summary or ''}".lower()
+    if any(marker in lowered for marker in ("mystery", "noir", "detective", "investigation")):
+        return "mystery"
+    if any(marker in lowered for marker in ("romance", "relationship", "intimacy")):
+        return "relationship"
+    if any(marker in lowered for marker in ("horror", "haunt", "monster", "dread")):
+        return "threat"
+    if any(marker in lowered for marker in ("survival", "isolation", "stranded", "disaster")):
+        return "threat"
+    return "personal_arc"
+
+
+def _thread_next_beat(thread_type: str, setting: str, pc_name: str) -> str:
+    if thread_type == "mystery":
+        return "Reveal one concrete clue, but make the answer raise a sharper question."
+    if thread_type == "relationship":
+        return "Give an NPC a clear emotional reaction that tests trust, desire, loyalty, or boundaries."
+    if thread_type == "threat":
+        return "Show the pressure getting closer through a specific sensory sign or immediate cost."
+    if thread_type == "environment":
+        return f"Let {setting} change the situation before anyone can settle into safety."
+    return f"Force {pc_name} to choose what they are willing to risk, hide, admit, or protect."
+
+
+def _initial_story_beat(thread_type: str, setting: str, pc_name: str) -> str:
+    if thread_type == "mystery":
+        return "a witness, clue, or contradiction is close enough to act on, but revealing it will put someone at risk."
+    if thread_type == "relationship":
+        return "an NPC's emotional reaction makes the next choice impossible to treat as neutral."
+    if thread_type == "threat":
+        return "a specific sign shows the danger has already entered the scene."
+    if thread_type == "environment":
+        return f"{setting} changes the situation before anyone can settle into safety."
+    return f"{pc_name} is pushed toward a choice that exposes what matters most."
+
+
+def _build_story_threads(
+    campaign_id: str,
+    *,
+    setting: str,
+    genre_vibe: str,
+    pc_name: str,
+    pc_concept: str,
+    lore_anchor: str | None,
+    factions: list[FactionState],
+) -> list[StoryThread]:
+    primary_type = _primary_thread_type(genre_vibe, lore_anchor)
+    central_summary = (
+        f"Lore pressure: {lore_anchor}"
+        if lore_anchor
+        else f"The central pressure of this {genre_vibe} story is active in {setting}."
+    )
+    threads = [
+        StoryThread(
+            thread_id=_story_thread_slug(campaign_id, "central-pressure"),
+            type=primary_type,
+            title="Central Pressure",
+            tension=2,
+            summary=central_summary,
+            current_beat=_initial_story_beat(primary_type, setting, pc_name),
+            next_beat=_thread_next_beat(primary_type, setting, pc_name),
+            unresolved_question="What truth, cost, or emotional turn will make the situation harder to ignore?",
+        ),
+        StoryThread(
+            thread_id=_story_thread_slug(campaign_id, "personal-arc"),
+            type="personal_arc",
+            title=f"{pc_name}'s Personal Arc",
+            tension=1,
+            summary=f"{pc_name} is {pc_concept}",
+            current_beat=f"{pc_name} has entered the story with unfinished business and a point of vulnerability.",
+            next_beat=_thread_next_beat("personal_arc", setting, pc_name),
+            unresolved_question=f"What does {pc_name} want badly enough to complicate the easy answer?",
+        ),
+        StoryThread(
+            thread_id=_story_thread_slug(campaign_id, "place-pressure"),
+            type="environment",
+            title="The Place Pushes Back",
+            tension=1,
+            summary=f"{setting} should act like a living pressure on the scene, not just a backdrop.",
+            current_beat="The location frames the opening situation.",
+            next_beat=_thread_next_beat("environment", setting, pc_name),
+            unresolved_question="How does the place make the next choice more immediate?",
+        ),
+    ]
+    if factions:
+        threads.append(
+            StoryThread(
+                thread_id=_story_thread_slug(campaign_id, "faction-pressure"),
+                type="faction",
+                title="Faction Pressure",
+                tension=2,
+                summary=(
+                    f"{factions[0].name} and {factions[1].name} both have interests that can move "
+                    "even when the player hesitates."
+                ),
+                current_beat="The factions are watching for leverage.",
+                next_beat=f"Let {factions[0].name} or {factions[1].name} make a small, concrete move.",
+                unresolved_question="Who benefits if the PC delays?",
+            )
+        )
+    return threads
 
 
 def _build_factions(genre_vibe: str) -> list[FactionState]:
@@ -359,17 +506,31 @@ def build_campaign_bundle(request: CampaignBootstrapRequest) -> CampaignBundle:
     )
     lore_anchor = _lore_anchor(combined_context_summary)
 
-    factions = _build_factions(genre_vibe)
+    use_factions = _prefers_faction_frame(genre_vibe, combined_context_summary, play_preferences)
+    factions = _build_factions(genre_vibe) if use_factions else []
+    campaign_id = _slugify(story_title)
+    story_threads = _build_story_threads(
+        campaign_id,
+        setting=setting,
+        genre_vibe=genre_vibe,
+        pc_name=pc_name,
+        pc_concept=pc_concept,
+        lore_anchor=lore_anchor,
+        factions=factions,
+    )
+    primary_thread = story_threads[0]
     premise_hook = str(preset.get("premise_hook") or "").strip()
     if premise_hook:
+        premise = f"{premise_hook} In {setting}, {pc_name} is pulled into {primary_thread.summary}"
+    elif factions:
         premise = (
-            f"{premise_hook} In {setting}, {pc_name} is pulled into a fragile conflict where "
+            f"In {setting}, {pc_name} is pulled into a fragile conflict where "
             f"{factions[0].name} and {factions[1].name} both need something only the PC can influence."
         )
     else:
         premise = (
-            f"In {setting}, {pc_name} is pulled into a fragile conflict where "
-            f"{factions[0].name} and {factions[1].name} both need something only the PC can influence."
+            f"In {setting}, {pc_name} is pulled into a story shaped by "
+            f"{primary_thread.title.lower()}: {primary_thread.summary}"
         )
     if lore_anchor:
         premise = f"{premise} Lore context: {lore_anchor}"
@@ -381,26 +542,29 @@ def build_campaign_bundle(request: CampaignBootstrapRequest) -> CampaignBundle:
     ]
     if opening_pressures:
         opening_hook = f"As the story opens in {setting}, {opening_pressures[0]}"
-    else:
+    elif factions:
         opening_hook = (
             f"As the story opens in {setting}, a messenger arrives with an offer that could "
             f"shift the balance between {factions[0].name} and {factions[1].name} before nightfall."
         )
-    campaign_id = _slugify(story_title)
+    else:
+        opening_hook = (
+            f"As the story opens in {setting}, {primary_thread.current_beat}"
+        )
 
     quests = [
         QuestState(
             quest_id=f"{campaign_id}-quest-001",
-            title="Choose who gets the first answer",
-            summary=f"Decide how to respond to the opening approach tied to {factions[0].name}.",
-            source_faction=factions[0].name,
+            title=primary_thread.title,
+            summary=primary_thread.summary,
+            source_faction=factions[0].name if factions else primary_thread.type,
             created_turn=0,
         ),
         QuestState(
             quest_id=f"{campaign_id}-quest-002",
-            title="Find the truth behind the pressure point",
-            summary="Investigate the hidden problem that is making every faction act early.",
-            source_faction=factions[1].name,
+            title=story_threads[1].title,
+            summary=story_threads[1].summary,
+            source_faction=factions[1].name if len(factions) > 1 else story_threads[1].type,
             created_turn=0,
         ),
     ]
@@ -416,10 +580,19 @@ def build_campaign_bundle(request: CampaignBootstrapRequest) -> CampaignBundle:
         factions=factions,
         active_quests=quests,
         pending_events=opening_pressures[:3]
-        or [
-            f"{factions[0].name} is preparing an opening move.",
-            f"{factions[1].name} is watching for signs that the PC has chosen a side.",
-        ],
+        or (
+            [
+                f"{factions[0].name} is preparing an opening move.",
+                f"{factions[1].name} is watching for signs that the PC has chosen a side.",
+            ]
+            if factions
+            else [
+                thread.next_beat
+                for thread in story_threads[:3]
+                if thread.status == "active" and thread.next_beat
+            ]
+        )
+        or ["A story thread needs an immediate beat before the scene can settle."],
         notes=[
             f"PC concept: {pc_concept}",
             f"Tone: {tone}",
@@ -454,12 +627,20 @@ def build_campaign_bundle(request: CampaignBootstrapRequest) -> CampaignBundle:
         opening_hook=opening_hook,
     )
 
-    relationship_graph = {
-        "PC": {
-            factions[0].name: "watched with cautious interest",
-            factions[1].name: "treated as a possible swing factor",
+    if factions:
+        relationship_graph = {
+            "PC": {
+                factions[0].name: "watched with cautious interest",
+                factions[1].name: "treated as a possible swing factor",
+            }
         }
-    }
+    else:
+        relationship_graph = {
+            "PC": {
+                primary_thread.title: "personally entangled",
+                "The Setting": "under immediate pressure",
+            }
+        }
 
     rpg_characters = [
         CharacterProfile(
@@ -489,30 +670,57 @@ def build_campaign_bundle(request: CampaignBootstrapRequest) -> CampaignBundle:
                 )
             )
     else:
-        rpg_characters.extend(
-            [
-                CharacterProfile(
-                    name="Mara Voss",
-                    role="Faction Envoy",
-                    public_summary=f"A poised operator speaking for {factions[0].name}.",
-                    goals=[factions[0].goal],
-                    traits=["calm under pressure", "measured", "observant"],
-                ),
-                CharacterProfile(
-                    name="Iven Hale",
-                    role="Local Intermediary",
-                    public_summary=f"A careful broker trying to avoid open conflict with {factions[1].name}.",
-                    goals=[factions[1].goal],
-                    traits=["guarded", "pragmatic", "politically aware"],
-                ),
-            ]
-        )
+        if factions:
+            rpg_characters.extend(
+                [
+                    CharacterProfile(
+                        name="Mara Voss",
+                        role="Faction Envoy",
+                        public_summary=f"A poised operator speaking for {factions[0].name}.",
+                        goals=[factions[0].goal],
+                        traits=["calm under pressure", "measured", "observant"],
+                    ),
+                    CharacterProfile(
+                        name="Iven Hale",
+                        role="Local Intermediary",
+                        public_summary=f"A careful broker trying to avoid open conflict with {factions[1].name}.",
+                        goals=[factions[1].goal],
+                        traits=["guarded", "pragmatic", "politically aware"],
+                    ),
+                ]
+            )
+        else:
+            npc_names = _genre_npc_names(genre_vibe)
+            rpg_characters.extend(
+                [
+                    CharacterProfile(
+                        name=npc_names[0],
+                        role="Story Catalyst",
+                        public_summary=f"An NPC tied to {primary_thread.title.lower()}.",
+                        goals=[primary_thread.next_beat],
+                        traits=["specific", "active", "emotionally readable"],
+                    ),
+                    CharacterProfile(
+                        name=npc_names[1],
+                        role="Pressure Point",
+                        public_summary=f"Someone whose choices complicate {pc_name}'s path.",
+                        goals=[story_threads[1].next_beat],
+                        traits=["guarded", "motivated", "consequential"],
+                    ),
+                ]
+            )
 
     timeline = [f"Campaign initialized: {story_title} in {setting}."]
-    recap = (
-        f"{pc_name} enters {setting} as tensions build between {factions[0].name} and "
-        f"{factions[1].name}. The first decision will determine who gains the initiative."
-    )
+    if factions:
+        recap = (
+            f"{pc_name} enters {setting} as tensions build between {factions[0].name} and "
+            f"{factions[1].name}. The first decision will determine who gains the initiative."
+        )
+    else:
+        recap = (
+            f"{pc_name} enters {setting} with {primary_thread.title.lower()} already in motion. "
+            f"The first decision should reveal, complicate, or deepen one active story thread."
+        )
 
     return CampaignBundle(
         world_state=world_state,
@@ -522,6 +730,7 @@ def build_campaign_bundle(request: CampaignBootstrapRequest) -> CampaignBundle:
         relationship_graph=relationship_graph,
         rpg_characters=rpg_characters,
         quests=quests,
+        story_threads=story_threads,
         timeline=timeline,
         recap=recap,
     )

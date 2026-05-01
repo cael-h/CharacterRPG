@@ -14,6 +14,7 @@ from backend.app.services.campaign_storage import CampaignStorage
 from backend.app.services.model_providers import ModelResponse
 from backend.app.services.local_play import (
     _build_runtime_instructions,
+    _build_story_director_brief,
     _clean_player_facing_reply,
     _looks_like_hidden_planning,
     _resolve_runtime_settings,
@@ -210,13 +211,36 @@ def test_campaign_bootstrap_writes_campaign_bundle() -> None:
 
     assert response.status_code == 200
     assert payload["campaign_id"] == "ash-market-signals"
-    assert len(payload["files_written"]) == 9
+    assert len(payload["files_written"]) == 10
 
     bundle_response = client.get("/campaign/bundle", params={"campaign_id": "ash-market-signals"})
     bundle = bundle_response.json()
     assert bundle_response.status_code == 200
     assert bundle["scenario"]["title"] == "Ash Market Signals"
     assert bundle["world_state"]["campaign_id"] == "ash-market-signals"
+    assert bundle["factions"] == []
+    assert len(bundle["story_threads"]) >= 3
+    assert bundle["story_threads"][0]["type"] in {"mystery", "personal_arc"}
+
+
+def test_campaign_bootstrap_keeps_factions_when_story_asks_for_them() -> None:
+    response = client.post(
+        "/campaign/bootstrap",
+        json={
+            "story_name": "Court Signals",
+            "setting": "A fortress city",
+            "genre_vibe": "Political court intrigue with rival factions",
+            "player_character": {
+                "name": "Nera Vale",
+                "concept": "A courier with a dangerous memory for routes.",
+            },
+        },
+    )
+    bundle = client.get("/campaign/bundle", params={"campaign_id": response.json()["campaign_id"]}).json()
+
+    assert response.status_code == 200
+    assert len(bundle["factions"]) == 2
+    assert any(thread["type"] == "faction" for thread in bundle["story_threads"])
 
 
 def test_runtime_settings_endpoint_round_trips_campaign_settings() -> None:
@@ -285,7 +309,9 @@ def test_local_play_mock_provider_persists_history(tmp_path: Path) -> None:
     assert response.model == "mock-rpg-model"
     assert response.turn == 1
     assert response.transcript_entries_appended == 2
-    assert storage.load_world_state().turn == 1
+    saved = storage.load_bundle()
+    assert saved.world_state.turn == 1
+    assert saved.story_threads[0].last_advanced_turn == 1
     assert len(storage.load_play_history()) == 2
 
 
@@ -338,6 +364,30 @@ def test_runtime_settings_are_added_to_runtime_instructions() -> None:
     assert "Mature/NSFW material is enabled" in instructions
     assert "OPERATOR RUNTIME NOTES" in instructions
     assert "Keep consequences intimate and avoid mechanics notes." in instructions
+    assert "STORY DIRECTOR BRIEF" in instructions
+    assert "Story momentum does not require factions" in instructions
+
+
+def test_story_director_rotates_to_quiet_threads() -> None:
+    bundle = build_campaign_bundle(
+        CampaignBootstrapRequest(
+            story_name="Director Prompt Campaign",
+            setting="A flooded archive district",
+            genre_vibe="Urban fantasy mystery",
+            player_character=PlayerCharacterInput(
+                name="Nera Vale",
+                concept="A courier with a dangerous memory for routes.",
+            ),
+        )
+    )
+    bundle.world_state.turn = 4
+    bundle.story_threads[0].last_advanced_turn = 3
+    bundle.story_threads[1].last_advanced_turn = 0
+
+    brief = _build_story_director_brief(bundle)
+
+    assert bundle.story_threads[1].title in brief
+    assert "bring it onstage now" in brief
 
 
 def test_session_runtime_settings_can_disable_campaign_boolean_defaults(tmp_path: Path) -> None:
@@ -382,6 +432,7 @@ def test_structured_play_response_updates_saved_bundle(tmp_path: Path) -> None:
                     '"timeline_entries":["Mira revealed the quay lead."],'
                     '"recap_delta":"The investigation now points toward the quay.",'
                     '"quest_updates":[{"title":"Find the quay witness","status":"open","summary":"Locate the person Mira saw near the quay.","source_faction":"Mira"}],'
+                    '"story_thread_updates":[{"title":"Central Pressure","status":"active","tension":4,"summary":"The quay lead is now the active line of pressure.","current_beat":"Mira gave the quay lead.","next_beat":"Show what makes the quay dangerous.","unresolved_question":"Who else knows about the witness?"}],'
                     '"event_queue_updates":{"add":["A watcher crosses the quay."],"remove":[]},'
                     '"npc_memory_notes":["Mira risked herself to give the lead."]'
                     "}"
@@ -421,6 +472,9 @@ def test_structured_play_response_updates_saved_bundle(tmp_path: Path) -> None:
     assert "Turn 1: The investigation now points toward the quay." in saved.recap
     assert "A watcher crosses the quay." in saved.event_queue
     assert any(quest.title == "Find the quay witness" for quest in saved.quests)
+    assert saved.story_threads[0].tension == 4
+    assert saved.story_threads[0].last_advanced_turn == 1
+    assert saved.story_threads[0].next_beat == "Show what makes the quay dangerous."
     assert any("Mira trusts the PC" in note for note in saved.world_state.notes)
 
 

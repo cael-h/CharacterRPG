@@ -20,6 +20,7 @@ from backend.app.models.play import (
 )
 from backend.app.models.quest import QuestState
 from backend.app.models.scenario import ScenarioState
+from backend.app.models.story import StoryThread
 from backend.app.models.transcript_memory import TranscriptMemorySection
 from backend.app.models.world_state import WorldState
 
@@ -78,6 +79,10 @@ class CampaignStorage:
     @property
     def quests_path(self) -> Path:
         return self.base_dir / 'quests.yaml'
+
+    @property
+    def story_threads_path(self) -> Path:
+        return self.base_dir / 'story_threads.yaml'
 
     @property
     def scenario_path(self) -> Path:
@@ -198,6 +203,14 @@ class CampaignStorage:
             encoding='utf-8',
         )
         return self.quests_path
+
+    def save_story_threads(self, story_threads: list[StoryThread]) -> Path:
+        payload = [model_dump(thread) for thread in story_threads]
+        self.story_threads_path.write_text(
+            yaml.safe_dump(payload, sort_keys=False),
+            encoding='utf-8',
+        )
+        return self.story_threads_path
 
     def save_scenario(self, scenario: ScenarioState) -> Path:
         self.scenario_path.write_text(
@@ -349,6 +362,11 @@ class CampaignStorage:
             raw_quests = yaml.safe_load(self.quests_path.read_text(encoding='utf-8')) or []
             quests = [model_validate(QuestState, payload) for payload in raw_quests]
 
+        story_threads: list[StoryThread] = []
+        if self.story_threads_path.exists():
+            raw_story_threads = yaml.safe_load(self.story_threads_path.read_text(encoding='utf-8')) or []
+            story_threads = [model_validate(StoryThread, payload) for payload in raw_story_threads]
+
         world_state.factions = factions
         world_state.active_quests = quests
         world_state.pending_events = event_queue
@@ -360,6 +378,7 @@ class CampaignStorage:
             relationship_graph=relationship_graph,
             rpg_characters=rpg_characters,
             quests=quests,
+            story_threads=story_threads,
             timeline=timeline,
             recap=recap,
         )
@@ -378,6 +397,7 @@ class CampaignStorage:
         self.save_relationship_graph(bundle.relationship_graph)
         self.save_characters(bundle.rpg_characters)
         self.save_quests(bundle.quests)
+        self.save_story_threads(bundle.story_threads)
         timeline_text = '\n'.join(f'- {entry}' for entry in bundle.timeline).strip()
         self.timeline_path.write_text(timeline_text + ('\n' if timeline_text else ''), encoding='utf-8')
         self.update_recap(bundle.recap)
@@ -389,6 +409,7 @@ class CampaignStorage:
             str(self.relationship_graph_path),
             str(self.characters_path),
             str(self.quests_path),
+            str(self.story_threads_path),
             str(self.timeline_path),
             str(self.recap_path),
         ]
@@ -653,6 +674,7 @@ class CampaignStorage:
             'relationship_graph.yaml',
             'rpg_characters.yaml',
             'quests.yaml',
+            'story_threads.yaml',
             'timeline.md',
             'recap.md',
             'play_history.jsonl',

@@ -4,6 +4,7 @@ from backend.app.models.character import CharacterProfile
 from backend.app.models.faction import FactionState
 from backend.app.models.quest import QuestState
 from backend.app.models.scenario import ScenarioState
+from backend.app.models.story import StoryThread
 from backend.app.models.world_state import WorldState
 
 
@@ -38,6 +39,7 @@ class CampaignBundle(BaseModel):
     relationship_graph: dict[str, dict[str, str]] = Field(default_factory=dict)
     rpg_characters: list[CharacterProfile] = Field(default_factory=list)
     quests: list[QuestState] = Field(default_factory=list)
+    story_threads: list[StoryThread] = Field(default_factory=list)
     timeline: list[str] = Field(default_factory=list)
     recap: str = ""
 

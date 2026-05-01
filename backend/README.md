@@ -64,7 +64,13 @@ sexual violence, so normal adult stakes do not make the runtime halt or steer aw
 
 Play turns ask capable models for a structured JSON turn with player-facing
 `reply` plus conservative updates for world state, timeline, recap, quest notes,
-event queue, and NPC memory. If a model returns normal prose instead, the backend
-tries one structured repair pass. If repair still fails or the provider is
-rate-limited, the reply still works and persistence falls back to transcript +
-turn count only.
+story threads, event queue, and NPC memory. If a model returns normal prose
+instead, the backend tries one structured repair pass. If repair still fails or
+the provider is rate-limited, the reply still works and persistence falls back
+to transcript + turn count only.
+
+Campaigns now use `story_threads.yaml` as the main momentum primitive. Factions
+are optional; the bootstrap only creates them when the requested story frame
+explicitly points that way. The runtime builds a story-director brief from active
+threads each turn, so mysteries, romances, horror, survival, slice-of-life, and
+personal dramas can keep moving without forcing faction politics.

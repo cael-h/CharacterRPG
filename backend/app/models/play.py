@@ -64,12 +64,25 @@ class PlayQuestUpdate(BaseModel):
     source_faction: str | None = None
 
 
+class PlayStoryThreadUpdate(BaseModel):
+    thread_id: str | None = None
+    type: str | None = None
+    title: str | None = None
+    status: str | None = None
+    tension: int | None = Field(default=None, ge=0, le=10)
+    summary: str | None = None
+    current_beat: str | None = None
+    next_beat: str | None = None
+    unresolved_question: str | None = None
+
+
 class StructuredPlayTurn(BaseModel):
     reply: str = Field(min_length=1)
     state_updates: PlayStateUpdates = Field(default_factory=PlayStateUpdates)
     timeline_entries: list[str] = Field(default_factory=list)
     recap_delta: str | None = None
     quest_updates: list[PlayQuestUpdate] = Field(default_factory=list)
+    story_thread_updates: list[PlayStoryThreadUpdate] = Field(default_factory=list)
     event_queue_updates: PlayEventQueueUpdates = Field(default_factory=PlayEventQueueUpdates)
     npc_memory_notes: list[str] = Field(default_factory=list)
 

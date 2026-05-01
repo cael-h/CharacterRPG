@@ -16,11 +16,13 @@ from backend.app.models.play import (
     LocalPlayResponse,
     PlayQuestUpdate,
     PlaySessionSummary,
+    PlayStoryThreadUpdate,
     PlayTranscriptEntry,
     RuntimeSettings,
     StructuredPlayTurn,
 )
 from backend.app.models.quest import QuestState
+from backend.app.models.story import StoryThread
 from backend.app.services.campaign_storage import CampaignStorage
 from backend.app.services.model_providers import (
     ModelMessage,
@@ -84,6 +86,7 @@ def _build_campaign_context(bundle: CampaignBundle, session_summary: PlaySession
             "notes": bundle.world_state.notes,
         },
         "factions": [model_dump(faction) for faction in bundle.factions],
+        "story_threads": [model_dump(thread) for thread in bundle.story_threads],
         "event_queue": bundle.event_queue,
         "quests": [model_dump(quest) for quest in bundle.quests],
         "relationship_graph": bundle.relationship_graph,
@@ -103,6 +106,49 @@ def _player_character_name(bundle: CampaignBundle) -> str | None:
     return None
 
 
+def _select_director_thread(bundle: CampaignBundle) -> StoryThread | None:
+    active_threads = [
+        thread
+        for thread in bundle.story_threads
+        if thread.status.lower() not in {"resolved", "closed", "complete"}
+    ]
+    if not active_threads:
+        return None
+    return sorted(
+        active_threads,
+        key=lambda thread: (thread.last_advanced_turn, -thread.tension, thread.thread_id),
+    )[0]
+
+
+def _build_story_director_brief(bundle: CampaignBundle) -> str:
+    thread = _select_director_thread(bundle)
+    if thread is None:
+        return (
+            "STORY DIRECTOR BRIEF\n"
+            "- No explicit story threads are available yet. Keep momentum by revealing information, "
+            "deepening a relationship, adding a complication, changing the situation, or moving the scene."
+        )
+
+    turns_since_advance = max(0, bundle.world_state.turn - thread.last_advanced_turn)
+    pressure_note = (
+        "This thread has been quiet; bring it onstage now."
+        if turns_since_advance >= 2
+        else "Use it if it naturally fits the player's move."
+    )
+    return (
+        "STORY DIRECTOR BRIEF\n"
+        "- Story momentum does not require factions. Use factions only if they fit this campaign.\n"
+        "- Every GM turn should do at least one concrete movement job: reveal information, complicate "
+        "the situation, deepen a relationship, escalate a threat, change the environment, force a "
+        "meaningful choice, or resolve/mutate a story thread.\n"
+        f"- Focus thread: {thread.title} ({thread.type}, tension {thread.tension}/10).\n"
+        f"- Current beat: {thread.current_beat}\n"
+        f"- Suggested next beat: {thread.next_beat}\n"
+        f"- Unresolved question: {thread.unresolved_question or 'What changes because of this turn?'}\n"
+        f"- Director note: {pressure_note}"
+    )
+
+
 def _build_runtime_instructions(
     bundle: CampaignBundle,
     *,
@@ -112,6 +158,7 @@ def _build_runtime_instructions(
 ) -> str:
     base_instructions = load_gpt_instructions()
     campaign_context = _build_campaign_context(bundle, session_summary)
+    director_brief = _build_story_director_brief(bundle)
     choice_policy = (
         '- Offer a short choice list only when the player explicitly asks for options or the scene has become genuinely hard to parse.\n'
         if not include_choices
@@ -162,10 +209,12 @@ def _build_runtime_instructions(
         '  "timeline_entries": [],\n'
         '  "recap_delta": null,\n'
         '  "quest_updates": [{"quest_id": null, "title": "string", "status": "open|closed|changed", "summary": "string", "source_faction": "string"}],\n'
+        '  "story_thread_updates": [{"thread_id": null, "type": "mystery|relationship|threat|personal_arc|environment|faction|story", "title": "string", "status": "active|resolved|changed", "tension": null, "summary": "string", "current_beat": "string", "next_beat": "string", "unresolved_question": "string"}],\n'
         '  "event_queue_updates": {"add": [], "remove": []},\n'
         '  "npc_memory_notes": []\n'
         "}\n"
         f"{runtime_notes}"
+        f"\n{director_brief}\n"
         "\nCURRENT CAMPAIGN BUNDLE\n"
         f"{campaign_context}"
     )
@@ -321,6 +370,13 @@ def _clean_player_facing_reply(text: str) -> str:
     return "\n".join(lines).strip()
 
 
+def _reply_excerpt(text: str, *, limit: int = 220) -> str:
+    flattened = " ".join(text.split()).strip()
+    if len(flattened) <= limit:
+        return flattened
+    return flattened[: limit - 3].rstrip() + "..."
+
+
 def _clean_update_entries(entries: list[str], *, max_entries: int = 8) -> list[str]:
     cleaned: list[str] = []
     for entry in entries:
@@ -377,6 +433,76 @@ def _apply_quest_update(
         target.source_faction = update.source_faction.strip()
 
 
+def _apply_story_thread_update(
+    story_threads: list[StoryThread],
+    update: PlayStoryThreadUpdate,
+    *,
+    next_turn: int,
+) -> None:
+    title = (update.title or "").strip()
+    thread_id = (update.thread_id or "").strip()
+    target: StoryThread | None = None
+    if thread_id:
+        target = next((thread for thread in story_threads if thread.thread_id == thread_id), None)
+    if target is None and title:
+        target = next((thread for thread in story_threads if thread.title.lower() == title.lower()), None)
+
+    if target is None:
+        summary = (update.summary or "").strip()
+        current_beat = (update.current_beat or "").strip()
+        next_beat = (update.next_beat or "").strip()
+        if not title or not (summary or current_beat or next_beat):
+            return
+        base_id = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-") or "thread"
+        existing_ids = {thread.thread_id for thread in story_threads}
+        candidate_id = thread_id or f"{base_id}-{next_turn}"
+        suffix = 2
+        while candidate_id in existing_ids:
+            candidate_id = f"{base_id}-{next_turn}-{suffix}"
+            suffix += 1
+        story_threads.append(
+            StoryThread(
+                thread_id=candidate_id,
+                type=(update.type or "story").strip() or "story",
+                title=title,
+                status=(update.status or "active").strip() or "active",
+                tension=update.tension if update.tension is not None else 1,
+                summary=summary or current_beat or next_beat,
+                current_beat=current_beat or summary or "This thread has entered play.",
+                next_beat=next_beat or "Push this thread with a concrete reveal, complication, or choice.",
+                unresolved_question=(update.unresolved_question or "").strip() or None,
+                created_turn=next_turn,
+                last_advanced_turn=next_turn,
+            )
+        )
+        return
+
+    changed = False
+    if update.type and update.type.strip():
+        target.type = update.type.strip()
+        changed = True
+    if update.status and update.status.strip():
+        target.status = update.status.strip()
+        changed = True
+    if update.tension is not None:
+        target.tension = update.tension
+        changed = True
+    if update.summary and update.summary.strip():
+        target.summary = update.summary.strip()
+        changed = True
+    if update.current_beat and update.current_beat.strip():
+        target.current_beat = update.current_beat.strip()
+        changed = True
+    if update.next_beat and update.next_beat.strip():
+        target.next_beat = update.next_beat.strip()
+        changed = True
+    if update.unresolved_question and update.unresolved_question.strip():
+        target.unresolved_question = update.unresolved_question.strip()
+        changed = True
+    if changed:
+        target.last_advanced_turn = next_turn
+
+
 def _apply_structured_turn_updates(
     bundle: CampaignBundle,
     structured_turn: StructuredPlayTurn | None,
@@ -419,8 +545,24 @@ def _apply_structured_turn_updates(
     for quest_update in structured_turn.quest_updates:
         _apply_quest_update(bundle.quests, quest_update, next_turn=next_turn)
 
+    for story_thread_update in structured_turn.story_thread_updates:
+        _apply_story_thread_update(bundle.story_threads, story_thread_update, next_turn=next_turn)
+
     bundle.world_state.active_quests = bundle.quests
     bundle.world_state.pending_events = bundle.event_queue
+
+
+def _advance_director_thread_from_reply(
+    bundle: CampaignBundle,
+    reply: str,
+    *,
+    next_turn: int,
+) -> None:
+    thread = _select_director_thread(bundle)
+    if thread is None:
+        return
+    thread.current_beat = f"Turn {next_turn}: {_reply_excerpt(reply)}"
+    thread.last_advanced_turn = next_turn
 
 
 def _extract_output_text(payload: dict[str, Any]) -> str:
@@ -611,6 +753,8 @@ def generate_local_play_response(
         ]
         active_storage.append_play_history(entries)
         _apply_structured_turn_updates(bundle, structured_turn, next_turn=next_turn)
+        if structured_turn is None or not structured_turn.story_thread_updates:
+            _advance_director_thread_from_reply(bundle, reply, next_turn=next_turn)
         bundle.world_state.turn = next_turn
         active_storage.save_bundle(bundle)
 

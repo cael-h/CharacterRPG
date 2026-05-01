@@ -67,8 +67,22 @@ type CampaignBundle = {
     tone: string;
   };
   event_queue: string[];
+  story_threads: StoryThread[];
   timeline: string[];
   recap: string;
+};
+
+type StoryThread = {
+  thread_id: string;
+  type: string;
+  title: string;
+  status: string;
+  tension: number;
+  summary: string;
+  current_beat: string;
+  next_beat: string;
+  unresolved_question?: string | null;
+  last_advanced_turn: number;
 };
 
 type SetupChatMessage = {
@@ -678,6 +692,28 @@ function App() {
       </section>
 
       <aside className="inspector" aria-label="Runtime inspector">
+        <section className="panel">
+          <div className="section-title">
+            <GitBranch size={16} />
+            <span>Story Threads</span>
+          </div>
+          <div className="thread-list">
+            {bundle?.story_threads?.length ? (
+              bundle.story_threads.slice(0, 5).map((thread) => (
+                <article className="thread-card" key={thread.thread_id}>
+                  <div>
+                    <strong>{thread.title}</strong>
+                    <span>{thread.type} / {thread.status} / {thread.tension}/10</span>
+                  </div>
+                  <p>{thread.next_beat}</p>
+                </article>
+              ))
+            ) : (
+              <p className="empty">No story threads yet.</p>
+            )}
+          </div>
+        </section>
+
         <section className="panel">
           <div className="section-title">
             <Server size={16} />
