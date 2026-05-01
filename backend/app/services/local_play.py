@@ -209,7 +209,7 @@ def _build_runtime_instructions(
         '  "timeline_entries": [],\n'
         '  "recap_delta": null,\n'
         '  "quest_updates": [{"quest_id": null, "title": "string", "status": "open|closed|changed", "summary": "string", "source_faction": "string"}],\n'
-        '  "story_thread_updates": [{"thread_id": null, "type": "mystery|relationship|threat|personal_arc|environment|faction|story", "title": "string", "status": "active|resolved|changed", "tension": null, "summary": "string", "current_beat": "string", "next_beat": "string", "unresolved_question": "string"}],\n'
+        '  "story_thread_updates": [{"thread_id": null, "type": "mystery|relationship|threat|personal_arc|environment|faction|scene|continuity|story", "title": "string", "status": "active|resolved|changed", "tension": null, "summary": "string", "current_beat": "string", "next_beat": "string", "unresolved_question": "string"}],\n'
         '  "event_queue_updates": {"add": [], "remove": []},\n'
         '  "npc_memory_notes": []\n'
         "}\n"

@@ -36,6 +36,7 @@ Blocked / To do next
 - Usage tracker counters and cost estimates in client; server echo of token counts later.
 
 ## 2026-04-30
+- Added a RolePlayGPT import helper that copies Tessera into CharacterRPG format and merges the RWBY/Ash campaigns into one `ashes-through-beacon-glass` campaign with `ash-in-remnant` preserved as an archive session.
 - Added story threads as the primary momentum primitive, with optional factions only when the requested story frame calls for them.
 - Added a story-director brief before play turns so the model has a concrete active thread, current beat, next beat, and movement job even for factionless stories.
 - Added `story_threads.yaml` storage, structured story-thread updates, and web inspector visibility for active threads.

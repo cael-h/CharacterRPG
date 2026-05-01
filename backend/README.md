@@ -74,3 +74,16 @@ are optional; the bootstrap only creates them when the requested story frame
 explicitly points that way. The runtime builds a story-director brief from active
 threads each turn, so mysteries, romances, horror, survival, slice-of-life, and
 personal dramas can keep moving without forcing faction politics.
+
+## RolePlayGPT Import
+
+Use the importer to copy selected RolePlayGPT campaigns into CharacterRPG's
+storage format without modifying the RolePlayGPT checkout:
+
+```bash
+.venv/bin/python scripts/import_roleplaygpt_campaigns.py --replace
+```
+
+The current importer copies `tessera`, converts it with story threads, and merges
+the RWBY/Ash material into one `ashes-through-beacon-glass` campaign. The
+`ash-in-remnant` material is preserved as the `ash-in-remnant-archive` session.
