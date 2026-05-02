@@ -267,6 +267,48 @@ def dedupe_named_items(items: list[dict[str, Any]], key: str) -> list[dict[str, 
 
 def write_ash(target_campaign: Path, archive_source: Path) -> None:
     campaign_id = "ashes-through-beacon-glass"
+    factions = [
+        {
+            "name": "Beacon Academy",
+            "goal": "Protect students and understand Ash's impossible arrival.",
+            "tension": 1,
+            "next_action": "Ozpin asks careful questions while watching Pyrrha's reaction.",
+            "last_outcome": None,
+        },
+        {
+            "name": "Grimm",
+            "goal": "Draw danger toward fear, negativity, and hidden supernatural pressure.",
+            "tension": 2,
+            "next_action": "Remain a distant but real pressure outside the Beacon Tower scene.",
+            "last_outcome": None,
+        },
+    ]
+    quests = [
+        {
+            "quest_id": "meet-ozpin",
+            "title": "Meet Headmaster Ozpin",
+            "status": "open",
+            "summary": "Ash and Pyrrha must decide how much truth to reveal about Ash's origin.",
+            "source_faction": "Beacon Academy",
+            "created_turn": 0,
+        },
+        {
+            "quest_id": "understand-remnant",
+            "title": "Understand Remnant",
+            "status": "open",
+            "summary": "Ash needs shelter, social footing, and a working model of Aura, Dust, Grimm, and kingdoms.",
+            "source_faction": "Self",
+            "created_turn": 0,
+        },
+        {
+            "quest_id": "protect-pyrrha-bond",
+            "title": "Honor the Bond With Pyrrha",
+            "status": "open",
+            "summary": "Let the mutual attraction matter without speaking for Ash or flattening Pyrrha's agency.",
+            "source_faction": "Pyrrha",
+            "created_turn": 0,
+        },
+    ]
     scenario = read_yaml(target_campaign / "scenario.yaml", {})
     scenario.update(
         {
@@ -285,7 +327,34 @@ def write_ash(target_campaign: Path, archive_source: Path) -> None:
     write_yaml(target_campaign / "scenario.yaml", scenario)
 
     world = update_world_campaign_id(target_campaign, campaign_id)
+    archive_world = read_yaml(archive_source / "world_state.yaml", {})
+    archive_turn = int(archive_world.get("turn") or 0)
+    archive_recap = (archive_source / "recap.md").read_text(encoding="utf-8").strip()
+    merged_quests = [
+        *quests,
+        {
+            "quest_id": "semblance-training",
+            "title": "Master Water Semblance",
+            "status": "open",
+            "summary": "Merged branch context: Ash may later develop cooperative water control, thermal manipulation, and ice.",
+            "source_faction": "Self",
+            "created_turn": archive_turn,
+        },
+        {
+            "quest_id": "grimm-investigation",
+            "title": "Investigate Grimm Origins",
+            "status": "open",
+            "summary": "Merged branch context: Ash and Pyrrha may cautiously investigate the nature and purpose of Grimm.",
+            "source_faction": "Self",
+            "created_turn": archive_turn,
+        },
+    ]
     world["current_scene"] = scenario["opening_hook"]
+    world["turn"] = 0
+    world["world_pressure"] = 1
+    world["pressure_clock"] = 0
+    world["factions"] = factions
+    world["active_quests"] = merged_quests
     world["pending_events"] = [
         "Beacon Tower elevator doors open toward Ozpin's office.",
         "Pyrrha waits to see whether Ash trusts Ozpin with the truth.",
@@ -301,88 +370,47 @@ def write_ash(target_campaign: Path, archive_source: Path) -> None:
     )
     write_yaml(target_campaign / "world_state.yaml", world)
 
-    archive_world = read_yaml(archive_source / "world_state.yaml", {})
-    archive_turn = int(archive_world.get("turn") or 0)
-    archive_recap = (archive_source / "recap.md").read_text(encoding="utf-8").strip()
-
     write_yaml(
         target_campaign / "event_queue.yaml",
         {"event_queue": world["pending_events"]},
     )
+    write_yaml(target_campaign / "factions.yaml", {"factions": factions})
+    write_yaml(target_campaign / "quests.yaml", merged_quests)
     write_yaml(
-        target_campaign / "factions.yaml",
+        target_campaign / "relationship_graph.yaml",
         {
-            "factions": [
-                {
-                    "name": "Beacon Academy",
-                    "goal": "Protect students and understand Ash's impossible arrival.",
-                    "tension": 1,
-                    "next_action": "Ozpin asks careful questions while watching Pyrrha's reaction.",
-                    "last_outcome": None,
-                },
-                {
-                    "name": "Grimm",
-                    "goal": "Draw danger toward fear, negativity, and hidden supernatural pressure.",
-                    "tension": 2,
-                    "next_action": "Remain a distant but real pressure outside the Beacon Tower scene.",
-                    "last_outcome": None,
-                },
-            ]
+            "relationship_graph": {
+                "Ash": {
+                    "Pyrrha Nikos": "immediate rapport and mutual attraction",
+                    "Ozpin": "about to be assessed by a careful authority",
+                    "Beacon Academy": "unknown displaced outsider seeking help",
+                }
+            }
         },
     )
-    write_yaml(
-        target_campaign / "quests.yaml",
-        [
-            {
-                "quest_id": "meet-ozpin",
-                "title": "Meet Headmaster Ozpin",
-                "status": "open",
-                "summary": "Ash and Pyrrha must decide how much truth to reveal about Ash's origin.",
-                "source_faction": "Beacon Academy",
-                "created_turn": 0,
-            },
-            {
-                "quest_id": "understand-remnant",
-                "title": "Understand Remnant",
-                "status": "open",
-                "summary": "Ash needs shelter, social footing, and a working model of Aura, Dust, Grimm, and kingdoms.",
-                "source_faction": "Self",
-                "created_turn": 0,
-            },
-            {
-                "quest_id": "protect-pyrrha-bond",
-                "title": "Honor the Bond With Pyrrha",
-                "status": "open",
-                "summary": "Let the mutual attraction matter without speaking for Ash or flattening Pyrrha's agency.",
-                "source_faction": "Pyrrha",
-                "created_turn": 0,
-            },
-            {
-                "quest_id": "semblance-training",
-                "title": "Master Water Semblance",
-                "status": "open",
-                "summary": "Merged branch context: Ash may later develop cooperative water control, thermal manipulation, and ice.",
-                "source_faction": "Self",
-                "created_turn": archive_turn,
-            },
-            {
-                "quest_id": "grimm-investigation",
-                "title": "Investigate Grimm Origins",
-                "status": "open",
-                "summary": "Merged branch context: Ash and Pyrrha may cautiously investigate the nature and purpose of Grimm.",
-                "source_faction": "Self",
-                "created_turn": archive_turn,
-            },
-        ],
-    )
-    target_chars = read_yaml(target_campaign / "rpg_characters.yaml", {}).get("characters", [])
-    archive_chars = read_yaml(archive_source / "rpg_characters.yaml", {}).get("characters", [])
     write_yaml(
         target_campaign / "rpg_characters.yaml",
         {
             "characters": dedupe_named_items(
                 [
-                    *target_chars,
+                    {
+                        "name": 'Professor Ashley "Ash" Faist',
+                        "role": "Player Character",
+                        "public_summary": "A young physicist and professor from Earth who has been displaced into Remnant and copes by overanalyzing everything.",
+                        "goals": [
+                            "Understand how and why he arrived in Remnant",
+                            "Secure shelter and social footing at Beacon",
+                            "Explore his growing connection with Pyrrha",
+                        ],
+                        "traits": [
+                            "Highly analytical",
+                            "Charming when nervous",
+                            "Broad scientific knowledge",
+                            "No money or local resources",
+                            "Alien to Remnant's customs and dangers",
+                            "Immediately emotionally entangled with Pyrrha",
+                        ],
+                    },
                     {
                         "name": "Pyrrha Nikos",
                         "role": "Primary NPC",
@@ -397,7 +425,6 @@ def write_ash(target_campaign: Path, archive_source: Path) -> None:
                         "goals": ["Assess Ash's danger and needs", "Protect Beacon", "Keep larger secrets contained"],
                         "traits": ["observant", "measured", "cryptic"],
                     },
-                    *archive_chars,
                 ],
                 "name",
             )
@@ -405,10 +432,11 @@ def write_ash(target_campaign: Path, archive_source: Path) -> None:
     )
 
     recap_path = target_campaign / "recap.md"
-    recap = recap_path.read_text(encoding="utf-8").strip() if recap_path.exists() else ""
     recap_path.write_text(
         (
-            f"{recap}\n\n"
+            'Professor Ashley "Ash" Faist is in Beacon Tower with Pyrrha Nikos, riding the circular elevator toward Ozpin\'s office. '
+            "Ash is displaced from Earth, homeless in Remnant, and still learning the basics of Aura, Dust, Grimm, kingdoms, and Beacon. "
+            "Pyrrha found him after training, chose to help him, and the two established immediate rapport and mutual attraction.\n\n"
             "Merged branch context from RolePlayGPT campaign `ash-in-remnant`:\n"
             f"{archive_recap}\n"
         ).strip()
@@ -416,27 +444,17 @@ def write_ash(target_campaign: Path, archive_source: Path) -> None:
         encoding="utf-8",
     )
     timeline_path = target_campaign / "timeline.md"
-    timeline = timeline_path.read_text(encoding="utf-8") if timeline_path.exists() else ""
-    if timeline and not timeline.endswith("\n"):
-        timeline += "\n"
-    timeline += "- Merged RolePlayGPT campaign ash-in-remnant as session ash-in-remnant-archive.\n"
-    timeline += "- Skipped ash-market-signals as an unrelated scaffold.\n"
-    timeline_path.write_text(timeline, encoding="utf-8")
+    timeline_path.write_text(
+        "- Campaign initialized: Ashes Through Beacon Glass at Beacon Academy in Vale.\n"
+        "- Merged RolePlayGPT campaign ash-in-remnant as branch context.\n"
+        "- Skipped ash-market-signals as an unrelated scaffold.\n",
+        encoding="utf-8",
+    )
 
     write_yaml(target_campaign / "story_threads.yaml", ash_threads(campaign_id, archive_turn=archive_turn))
-    update_campaign_metadata(target_campaign, campaign_id, "Ashes Through Beacon Glass")
-
-    archive_session = target_campaign / "sessions" / "ash-in-remnant-archive"
-    if archive_session.exists():
-        shutil.rmtree(archive_session)
-    archive_session.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(archive_source, archive_session)
-    session_world = update_world_campaign_id(archive_session, campaign_id)
-    write_yaml(
-        archive_session / "story_threads.yaml",
-        ash_threads(campaign_id, archive_turn=int(session_world.get("turn") or archive_turn)),
-    )
-    update_session_metadata(archive_session, campaign_id, "Ash in Remnant Archive")
+    sessions_dir = target_campaign / "sessions"
+    if sessions_dir.exists():
+        shutil.rmtree(sessions_dir)
     update_campaign_metadata(target_campaign, campaign_id, "Ashes Through Beacon Glass")
 
 
