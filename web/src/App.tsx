@@ -5,12 +5,15 @@ import {
   CheckCircle2,
   GitBranch,
   ListChecks,
+  Menu,
   MessageSquareText,
+  PanelRight,
   RefreshCw,
   Send,
   Server,
   Settings2,
   Wand2,
+  X,
 } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -231,6 +234,10 @@ function App() {
   const [runtimeNotes, setRuntimeNotes] = useState('');
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<Toast>(null);
+  const [uiMode, setUiMode] = useState<'setup' | 'play'>('play');
+  const [showSidebar, setShowSidebar] = useState(false);
+  const [showInspector, setShowInspector] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   const selectedProviderInfo = useMemo(
     () => providers.find((provider) => provider.provider === selectedProvider),
@@ -278,10 +285,14 @@ function App() {
     setSelectedModel((current) => current || providerDefaultModel);
     setCampaigns(campaignPayload);
     setSessions(sessionPayload);
-    if (!selectedCampaign && campaignPayload[0]?.campaign_id) {
+    if (campaignPayload.length === 0) {
+      setUiMode('setup');
+      return;
+    }
+    if (uiMode === 'play' && !selectedCampaign && campaignPayload[0]?.campaign_id) {
       setSelectedCampaign(campaignPayload[0].campaign_id);
     }
-  }, [api, selectedCampaign]);
+  }, [api, selectedCampaign, uiMode]);
 
   const refreshActive = useCallback(async () => {
     if (!selectedCampaign) return;
@@ -427,6 +438,8 @@ function App() {
       });
       setSelectedCampaign(payload.campaign_id);
       setSelectedSession('main');
+      setUiMode('play');
+      setShowInspector(false);
       await api<RuntimeSettings>('/play/runtime-settings', {
         method: 'POST',
         body: JSON.stringify({
@@ -447,10 +460,10 @@ function App() {
     }
   };
 
-  const saveRuntimeSettings = async () => {
+  const saveRuntimeSettings = async (): Promise<boolean> => {
     if (!selectedCampaign) {
       setToast({ tone: 'error', message: 'Select or bootstrap a campaign before saving runtime settings.' });
-      return;
+      return false;
     }
     setBusy(true);
     setToast(null);
@@ -472,8 +485,10 @@ function App() {
         tone: 'success',
         message: targetSessionId ? `Saved runtime settings for ${targetSessionId}` : 'Saved campaign runtime settings',
       });
+      return true;
     } catch (error) {
       setToast({ tone: 'error', message: error instanceof Error ? error.message : String(error) });
+      return false;
     } finally {
       setBusy(false);
     }
@@ -553,9 +568,70 @@ function App() {
     }
   };
 
+  const isSetupMode = uiMode === 'setup' || !selectedCampaign;
+
+  const handleRefresh = () => {
+    const operation = isSetupMode
+      ? refreshCatalog()
+      : Promise.all([refreshCatalog(), refreshActive()]).then(() => undefined);
+    operation.catch((error: unknown) =>
+      setToast({ tone: 'error', message: error instanceof Error ? error.message : String(error) }),
+    );
+  };
+
+  const handleNewCampaign = () => {
+    if (!isSetupMode) {
+      setSetupDraft(initialSetupDraft);
+      setSetupInput(initialSetupPrompt);
+      setSetupConversation([]);
+      setSetupReview(null);
+    }
+    setSelectedCampaign('');
+    setSelectedSession('main');
+    setSessionTitle('Main');
+    setBundle(null);
+    setHistory([]);
+    setUiMode('setup');
+    setShowSidebar(false);
+  };
+
+  const handleSelectCampaign = (campaignId: string) => {
+    const firstSession = sessions.find((session) => session.campaign_id === campaignId);
+    setSelectedCampaign(campaignId);
+    setSelectedSession(firstSession?.session_id || 'main');
+    setSessionTitle(firstSession?.title || 'Main');
+    setUiMode('play');
+    setShowSidebar(false);
+  };
+
+  const handleSelectSession = (session: SessionSummary) => {
+    setSelectedCampaign(session.campaign_id);
+    setSelectedSession(session.session_id);
+    setSessionTitle(session.title || session.session_id);
+    setUiMode('play');
+    setShowSidebar(false);
+  };
+
+  const handleSaveSettingsAndClose = async () => {
+    const saved = await saveRuntimeSettings();
+    if (saved) setShowSettings(false);
+  };
+
   return (
-    <main className="app-shell">
-      <aside className="sidebar" aria-label="Campaign navigation">
+    <main className={`app-shell ${isSetupMode ? 'setup-mode' : 'play-mode'}`}>
+      {(showSidebar || showInspector) && (
+        <button
+          aria-label="Close mobile panels"
+          className="mobile-overlay"
+          onClick={() => {
+            setShowSidebar(false);
+            setShowInspector(false);
+          }}
+          type="button"
+        />
+      )}
+
+      <aside className={`sidebar ${showSidebar ? 'open' : ''}`} aria-label="Campaign navigation">
         <div className="brand">
           <Boxes size={24} strokeWidth={1.8} />
           <div>
@@ -570,425 +646,511 @@ function App() {
             <span>Campaigns</span>
           </div>
           <div className="stack">
-            {campaigns.length === 0 ? (
-              <p className="empty">No campaigns yet.</p>
-            ) : (
-              campaigns.map((campaign) => (
-                <button
-                  className={`list-row ${selectedCampaign === campaign.campaign_id ? 'selected' : ''}`}
-                  key={campaign.campaign_id}
-                  onClick={() => setSelectedCampaign(campaign.campaign_id)}
-                  type="button"
-                >
-                  <span>{campaign.title || campaign.campaign_id}</span>
-                  <small>{campaign.session_count} sessions</small>
-                </button>
-              ))
-            )}
+            <button
+              className={`list-row new-campaign ${isSetupMode ? 'selected' : ''}`}
+              onClick={handleNewCampaign}
+              type="button"
+            >
+              <span>+ New Campaign</span>
+              <small>Draft and approve a story</small>
+            </button>
+            {campaigns.map((campaign) => (
+              <button
+                className={`list-row ${!isSetupMode && selectedCampaign === campaign.campaign_id ? 'selected' : ''}`}
+                key={campaign.campaign_id}
+                onClick={() => handleSelectCampaign(campaign.campaign_id)}
+                type="button"
+              >
+                <span>{campaign.title || campaign.campaign_id}</span>
+                <small>{campaign.session_count} sessions</small>
+              </button>
+            ))}
           </div>
         </section>
 
-        <section className="nav-section">
-          <div className="section-title">
-            <GitBranch size={16} />
-            <span>Sessions</span>
+        {!isSetupMode && (
+          <section className="nav-section">
+            <div className="section-title">
+              <GitBranch size={16} />
+              <span>Sessions</span>
+            </div>
+            <div className="stack">
+              <label className="field compact">
+                <span>Session ID</span>
+                <input value={selectedSession} onChange={(event) => setSelectedSession(event.target.value)} />
+              </label>
+              <label className="field compact">
+                <span>Title</span>
+                <input value={sessionTitle} onChange={(event) => setSessionTitle(event.target.value)} />
+              </label>
+              {sessions
+                .filter((session) => session.campaign_id === selectedCampaign)
+                .slice(0, 8)
+                .map((session) => (
+                  <button
+                    className={`list-row ${selectedSession === session.session_id ? 'selected' : ''}`}
+                    key={`${session.campaign_id}:${session.session_id}`}
+                    onClick={() => handleSelectSession(session)}
+                    type="button"
+                  >
+                    <span>{session.title || session.session_id}</span>
+                    <small>turn {session.turn}</small>
+                  </button>
+                ))}
+            </div>
+          </section>
+        )}
+      </aside>
+
+      <section className="play-surface" aria-label={isSetupMode ? 'Campaign setup' : 'Play session'}>
+        <header className="topbar">
+          <button
+            aria-label="Open campaign navigation"
+            className="icon-button mobile-only"
+            onClick={() => setShowSidebar(true)}
+            type="button"
+          >
+            <Menu size={20} />
+          </button>
+
+          <div className="header-titles">
+            <h1>
+              {isSetupMode ? 'Prepare a Campaign' : bundle?.scenario.title || setupReview?.summary?.title || 'Loading'}
+            </h1>
+            <p>
+              {isSetupMode
+                ? 'Draft, review, and approve a new story.'
+                : bundle?.scenario.genre_vibe ||
+                setupReview?.summary?.premise ||
+                  'Choose a campaign or start a new one.'}
+            </p>
           </div>
-          <div className="stack">
-            <label className="field compact">
-              <span>Session ID</span>
-              <input value={selectedSession} onChange={(event) => setSelectedSession(event.target.value)} />
-            </label>
-            <label className="field compact">
-              <span>Title</span>
-              <input value={sessionTitle} onChange={(event) => setSessionTitle(event.target.value)} />
-            </label>
-            {sessions
-              .filter((session) => !selectedCampaign || session.campaign_id === selectedCampaign)
-              .slice(0, 8)
-              .map((session) => (
+
+          <div className="header-actions">
+            <button className="icon-button" onClick={handleRefresh} type="button" aria-label="Refresh">
+              <RefreshCw size={18} />
+            </button>
+            <button className="icon-button" onClick={() => setShowSettings(true)} type="button" aria-label="Settings">
+              <Settings2 size={18} />
+            </button>
+            <button
+              aria-label="Open runtime inspector"
+              className="icon-button mobile-only"
+              onClick={() => setShowInspector(true)}
+              type="button"
+            >
+              <PanelRight size={20} />
+            </button>
+          </div>
+        </header>
+
+        {isSetupMode ? (
+          <div className="setup-center">
+            <div className="setup-chat" aria-live="polite">
+              {setupConversation.length === 0 ? (
+                <div className="empty-state">
+                  <Wand2 size={32} />
+                  <p>Tell the guide what kind of campaign you want to play.</p>
+                </div>
+              ) : (
+                setupConversation.map((message, index) => (
+                  <article className={`bubble ${message.role}`} key={`${message.role}:${index}`}>
+                    <span>{message.role === 'user' ? 'You' : 'Guide'}</span>
+                    <p>{message.content}</p>
+                  </article>
+                ))
+              )}
+            </div>
+
+            <form className="composer" onSubmit={askSetupAssistant}>
+              <textarea
+                value={setupInput}
+                onChange={(event) => setSetupInput(event.target.value)}
+                placeholder="Describe the campaign you want..."
+                rows={3}
+              />
+              <button disabled={busy || !setupInput.trim()} type="submit">
+                <Wand2 size={17} />
+                <span>Draft</span>
+              </button>
+            </form>
+          </div>
+        ) : (
+          <>
+            <section className="scene-band">
+              <div>
+                <span className="metric-label">Location</span>
+                <strong>{bundle?.world_state.location || 'Unknown'}</strong>
+              </div>
+              <div>
+                <span className="metric-label">Turn</span>
+                <strong>{bundle?.world_state.turn ?? 0}</strong>
+              </div>
+              <div>
+                <span className="metric-label">Pressure</span>
+                <strong>{bundle?.world_state.world_pressure ?? 0}</strong>
+              </div>
+              <div>
+                <span className="metric-label">Clock</span>
+                <strong>{bundle?.world_state.pressure_clock ?? 0}/6</strong>
+              </div>
+            </section>
+
+            <div className="transcript" aria-live="polite">
+              {history.length === 0 ? (
+                <div className="empty-state">
+                  <MessageSquareText size={28} />
+                  <p>{bundle?.scenario.opening_hook || 'Start the session with your first move.'}</p>
+                </div>
+              ) : (
+                history.map((entry, index) => (
+                  <article className={`bubble ${entry.role}`} key={`${entry.turn}:${entry.role}:${index}`}>
+                    <span>{entry.role === 'user' ? 'Player' : 'GM'}</span>
+                    <p>{entry.content}</p>
+                  </article>
+                ))
+              )}
+            </div>
+
+            <form className="composer" onSubmit={sendTurn}>
+              <textarea
+                value={turnText}
+                onChange={(event) => setTurnText(event.target.value)}
+                placeholder="Type your turn or OOC note"
+                rows={3}
+              />
+              <button disabled={busy || !turnText.trim() || !selectedCampaign} type="submit">
+                <Send size={17} />
+                <span>Send</span>
+              </button>
+            </form>
+          </>
+        )}
+      </section>
+
+      <aside className={`inspector ${showInspector ? 'open' : ''}`} aria-label="Runtime inspector">
+        <button
+          aria-label="Close runtime inspector"
+          className="icon-button mobile-close mobile-only"
+          onClick={() => setShowInspector(false)}
+          type="button"
+        >
+          <X size={20} />
+        </button>
+
+        {isSetupMode ? (
+          <div className="panel-group">
+            <section className="panel">
+              <div className="section-title">
+                <ListChecks size={16} />
+                <span>Campaign Draft</span>
+              </div>
+              <label className="field">
+                <span>Story Name</span>
+                <input
+                  value={setupDraft.story_name || ''}
+                  onChange={(event) => updateSetupDraft({ story_name: event.target.value })}
+                />
+              </label>
+              <label className="field">
+                <span>Setting</span>
+                <textarea
+                  value={setupDraft.setting || ''}
+                  onChange={(event) => updateSetupDraft({ setting: event.target.value })}
+                  rows={3}
+                />
+              </label>
+              <label className="field">
+                <span>Genre</span>
+                <input
+                  value={setupDraft.genre_vibe || ''}
+                  onChange={(event) => updateSetupDraft({ genre_vibe: event.target.value })}
+                />
+              </label>
+              <label className="field">
+                <span>Tone</span>
+                <input
+                  value={setupDraft.tone || ''}
+                  onChange={(event) => updateSetupDraft({ tone: event.target.value })}
+                />
+              </label>
+              <label className="field">
+                <span>Themes</span>
+                <textarea
+                  value={listToText(setupDraft.themes)}
+                  onChange={(event) => updateSetupDraft({ themes: textToList(event.target.value) })}
+                  rows={3}
+                />
+              </label>
+              <label className="field">
+                <span>Context</span>
+                <textarea
+                  value={setupDraft.context_summary || ''}
+                  onChange={(event) => updateSetupDraft({ context_summary: event.target.value })}
+                  rows={3}
+                />
+              </label>
+              <label className="field">
+                <span>Lore</span>
+                <textarea
+                  value={setupDraft.lore_text || ''}
+                  onChange={(event) => updateSetupDraft({ lore_text: event.target.value })}
+                  rows={4}
+                />
+              </label>
+              <label className="field">
+                <span>Lore Paths</span>
+                <textarea
+                  value={listToText(setupDraft.lore_paths)}
+                  onChange={(event) => updateSetupDraft({ lore_paths: textToList(event.target.value) })}
+                  rows={2}
+                />
+              </label>
+              <label className="field">
+                <span>Preferences</span>
+                <textarea
+                  value={listToText(setupDraft.play_preferences)}
+                  onChange={(event) => updateSetupDraft({ play_preferences: textToList(event.target.value) })}
+                  rows={4}
+                />
+              </label>
+              <label className="field checkbox-field">
+                <input
+                  checked={setupDraft.allow_inference}
+                  onChange={(event) => updateSetupDraft({ allow_inference: event.target.checked })}
+                  type="checkbox"
+                />
+                <span>Allow inference</span>
+              </label>
+
+              <div className="subsection-title">Player Character</div>
+              <label className="field">
+                <span>PC Name</span>
+                <input
+                  value={setupDraft.player_character.name || ''}
+                  onChange={(event) => updatePlayerDraft({ name: event.target.value })}
+                />
+              </label>
+              <label className="field">
+                <span>PC Concept</span>
+                <textarea
+                  value={setupDraft.player_character.concept || ''}
+                  onChange={(event) => updatePlayerDraft({ concept: event.target.value })}
+                  rows={3}
+                />
+              </label>
+              <label className="field">
+                <span>PC Goals</span>
+                <textarea
+                  value={listToText(setupDraft.player_character.goals)}
+                  onChange={(event) => updatePlayerDraft({ goals: textToList(event.target.value) })}
+                  rows={3}
+                />
+              </label>
+              <label className="field">
+                <span>PC Edges</span>
+                <textarea
+                  value={listToText(setupDraft.player_character.edges)}
+                  onChange={(event) => updatePlayerDraft({ edges: textToList(event.target.value) })}
+                  rows={3}
+                />
+              </label>
+              <label className="field">
+                <span>PC Complications</span>
+                <textarea
+                  value={listToText(setupDraft.player_character.complications)}
+                  onChange={(event) => updatePlayerDraft({ complications: textToList(event.target.value) })}
+                  rows={3}
+                />
+              </label>
+
+              <div className="button-row">
+                <button className="secondary-button" disabled={busy} onClick={reviewDraft} type="button">
+                  <ListChecks size={16} />
+                  <span>Review</span>
+                </button>
+                <button disabled={busy} onClick={bootstrapCampaign} type="button">
+                  <CheckCircle2 size={17} />
+                  <span>Approve</span>
+                </button>
+              </div>
+            </section>
+
+            {setupReview && (
+              <section className="panel">
+                <div className="section-title">
+                  <CheckCircle2 size={16} />
+                  <span>Review Status</span>
+                </div>
+                <div className={setupReview.ready_to_bootstrap ? 'status ok' : 'status warn'}>
+                  <Activity size={15} />
+                  <span>{setupReview.ready_to_bootstrap ? 'Ready to Play' : 'Needs Edits'}</span>
+                </div>
+                {setupReview.summary && (
+                  <div className="review-card">
+                    <strong>{setupReview.summary.title}</strong>
+                    <p>{setupReview.summary.premise}</p>
+                    <p>{setupReview.summary.opening_hook}</p>
+                  </div>
+                )}
+                {setupReview.findings.length > 0 && (
+                  <div className="finding-list">
+                    {setupReview.findings.map((finding, index) => (
+                      <div className={`finding ${finding.severity}`} key={`${finding.field}:${index}`}>
+                        <span>{finding.field}</span>
+                        <p>{finding.message}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+          </div>
+        ) : (
+          <div className="panel-group">
+            <section className="panel">
+              <div className="section-title">
+                <GitBranch size={16} />
+                <span>Story Threads</span>
+              </div>
+              <div className="thread-list">
+                {bundle?.story_threads?.length ? (
+                  bundle.story_threads.slice(0, 5).map((thread) => (
+                    <article className="thread-card" key={thread.thread_id}>
+                      <div>
+                        <strong>{thread.title}</strong>
+                        <span>{thread.type} / {thread.status} / {thread.tension}/10</span>
+                      </div>
+                      <p>{thread.next_beat}</p>
+                    </article>
+                  ))
+                ) : (
+                  <p className="empty">No story threads yet.</p>
+                )}
+              </div>
+            </section>
+
+            <section className="panel">
+              <div className="section-title">
+                <MessageSquareText size={16} />
+                <span>Memory Recap</span>
+              </div>
+              <p className="recap">{bundle?.recap || 'No recap loaded.'}</p>
+            </section>
+          </div>
+        )}
+      </aside>
+
+      {toast && <div className={`toast ${toast.tone}`}>{toast.message}</div>}
+
+      {showSettings && (
+        <div className="modal-backdrop" onClick={() => setShowSettings(false)} role="presentation">
+          <div className="modal-content" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
+            <header className="modal-header">
+              <h2>Runtime Settings</h2>
+              <button className="icon-button" onClick={() => setShowSettings(false)} type="button" aria-label="Close">
+                <X size={20} />
+              </button>
+            </header>
+
+            <div className="modal-body">
+              <section className="panel">
+                <div className="section-title">
+                  <Server size={16} />
+                  <span>Backend Connection</span>
+                </div>
+                <label className="field">
+                  <span>API Base URL</span>
+                  <input value={apiBase} onChange={(event) => setApiBase(event.target.value)} />
+                </label>
                 <button
-                  className={`list-row ${selectedSession === session.session_id ? 'selected' : ''}`}
-                  key={`${session.campaign_id}:${session.session_id}`}
+                  className="secondary-button"
                   onClick={() => {
-                    setSelectedCampaign(session.campaign_id);
-                    setSelectedSession(session.session_id);
+                    refreshCatalog().catch((error: unknown) =>
+                      setToast({ tone: 'error', message: error instanceof Error ? error.message : String(error) }),
+                    );
                   }}
                   type="button"
                 >
-                  <span>{session.title || session.session_id}</span>
-                  <small>turn {session.turn}</small>
+                  <RefreshCw size={16} />
+                  <span>Refresh Providers</span>
                 </button>
-              ))}
-          </div>
-        </section>
-      </aside>
+              </section>
 
-      <section className="play-surface" aria-label="Play session">
-        <header className="topbar">
-          <div>
-            <h1>{bundle?.scenario.title || setupReview?.summary?.title || 'Prepare a campaign'}</h1>
-            <p>
-              {bundle?.scenario.genre_vibe ||
-                setupReview?.summary?.premise ||
-                'Draft, review, and approve a campaign before play starts.'}
-            </p>
-          </div>
-          <button className="icon-button" onClick={() => refreshActive()} type="button" aria-label="Refresh">
-            <RefreshCw size={18} />
-          </button>
-        </header>
-
-        <section className="scene-band">
-          <div>
-            <span className="metric-label">Location</span>
-            <strong>{bundle?.world_state.location || setupDraft.setting || 'Not set'}</strong>
-          </div>
-          <div>
-            <span className="metric-label">Turn</span>
-            <strong>{bundle?.world_state.turn ?? 0}</strong>
-          </div>
-          <div>
-            <span className="metric-label">Pressure</span>
-            <strong>{bundle?.world_state.world_pressure ?? 0}</strong>
-          </div>
-          <div>
-            <span className="metric-label">Clock</span>
-            <strong>{bundle?.world_state.pressure_clock ?? 0}/6</strong>
-          </div>
-        </section>
-
-        <div className="transcript" aria-live="polite">
-          {history.length === 0 ? (
-            <div className="empty-state">
-              <MessageSquareText size={28} />
-              <p>
-                {bundle?.scenario.opening_hook ||
-                  setupReview?.summary?.opening_hook ||
-                  'Use the setup assistant, review the draft, then approve it for play.'}
-              </p>
+              <section className="panel">
+                <div className="section-title">
+                  <Settings2 size={16} />
+                  <span>Model Configuration</span>
+                </div>
+                <label className="field">
+                  <span>Provider</span>
+                  <select
+                    value={selectedProvider}
+                    onChange={(event) => {
+                      const provider = event.target.value;
+                      setSelectedProvider(provider);
+                      const next = providers.find((item) => item.provider === provider);
+                      setSelectedModel(next?.default_model || '');
+                    }}
+                  >
+                    {providers.map((provider) => (
+                      <option key={provider.provider} value={provider.provider}>
+                        {provider.provider}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Model</span>
+                  <input value={selectedModel} onChange={(event) => setSelectedModel(event.target.value)} />
+                </label>
+                <div className={selectedProviderInfo?.configured ? 'status ok' : 'status warn'}>
+                  <Activity size={15} />
+                  <span>{selectedProviderInfo?.configured ? 'Configured' : 'Needs configuration'}</span>
+                </div>
+                {selectedProviderInfo?.notes && <p className="provider-note">{selectedProviderInfo.notes}</p>}
+                <label className="field checkbox-field">
+                  <input
+                    checked={includeChoices}
+                    onChange={(event) => setIncludeChoices(event.target.checked)}
+                    type="checkbox"
+                  />
+                  <span>Choice prompts</span>
+                </label>
+                <label className="field checkbox-field">
+                  <input
+                    checked={matureContentEnabled}
+                    onChange={(event) => setMatureContentEnabled(event.target.checked)}
+                    type="checkbox"
+                  />
+                  <span>Mature content enabled</span>
+                </label>
+                <label className="field">
+                  <span>Runtime Notes</span>
+                  <textarea
+                    value={runtimeNotes}
+                    onChange={(event) => setRuntimeNotes(event.target.value)}
+                    rows={3}
+                  />
+                </label>
+                {!selectedCampaign && (
+                  <p className="empty">Runtime settings can be saved after a campaign is selected or approved.</p>
+                )}
+                <div className="button-row">
+                  <button className="secondary-button" disabled={busy} onClick={testProvider} type="button">
+                    <Activity size={16} />
+                    <span>Test</span>
+                  </button>
+                  <button disabled={busy || !selectedCampaign} onClick={handleSaveSettingsAndClose} type="button">
+                    <CheckCircle2 size={17} />
+                    <span>Save Settings</span>
+                  </button>
+                </div>
+              </section>
             </div>
-          ) : (
-            history.map((entry, index) => (
-              <article className={`bubble ${entry.role}`} key={`${entry.turn}:${entry.role}:${index}`}>
-                <span>{entry.role === 'user' ? 'Player' : 'GM'}</span>
-                <p>{entry.content}</p>
-              </article>
-            ))
-          )}
+          </div>
         </div>
-
-        <form className="composer" onSubmit={sendTurn}>
-          <textarea
-            value={turnText}
-            onChange={(event) => setTurnText(event.target.value)}
-            placeholder="Type your turn or OOC note"
-            rows={3}
-          />
-          <button disabled={busy || !turnText.trim() || !selectedCampaign} type="submit">
-            <Send size={17} />
-            <span>Send</span>
-          </button>
-        </form>
-      </section>
-
-      <aside className="inspector" aria-label="Runtime inspector">
-        <section className="panel">
-          <div className="section-title">
-            <GitBranch size={16} />
-            <span>Story Threads</span>
-          </div>
-          <div className="thread-list">
-            {bundle?.story_threads?.length ? (
-              bundle.story_threads.slice(0, 5).map((thread) => (
-                <article className="thread-card" key={thread.thread_id}>
-                  <div>
-                    <strong>{thread.title}</strong>
-                    <span>{thread.type} / {thread.status} / {thread.tension}/10</span>
-                  </div>
-                  <p>{thread.next_beat}</p>
-                </article>
-              ))
-            ) : (
-              <p className="empty">No story threads yet.</p>
-            )}
-          </div>
-        </section>
-
-        <section className="panel">
-          <div className="section-title">
-            <Server size={16} />
-            <span>Backend</span>
-          </div>
-          <label className="field">
-            <span>API Base</span>
-            <input value={apiBase} onChange={(event) => setApiBase(event.target.value)} />
-          </label>
-          <button className="secondary-button" onClick={() => refreshCatalog()} type="button">
-            <RefreshCw size={16} />
-            <span>Refresh</span>
-          </button>
-        </section>
-
-        <section className="panel">
-          <div className="section-title">
-            <Settings2 size={16} />
-            <span>Provider</span>
-          </div>
-          <label className="field">
-            <span>Provider</span>
-            <select
-              value={selectedProvider}
-              onChange={(event) => {
-                const provider = event.target.value;
-                setSelectedProvider(provider);
-                const next = providers.find((item) => item.provider === provider);
-                setSelectedModel(next?.default_model || '');
-              }}
-            >
-              {providers.map((provider) => (
-                <option key={provider.provider} value={provider.provider}>
-                  {provider.provider}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            <span>Model</span>
-            <input value={selectedModel} onChange={(event) => setSelectedModel(event.target.value)} />
-          </label>
-          <div className={selectedProviderInfo?.configured ? 'status ok' : 'status warn'}>
-            <Activity size={15} />
-            <span>{selectedProviderInfo?.configured ? 'Configured' : 'Needs configuration'}</span>
-          </div>
-          <label className="field checkbox-field">
-            <input
-              checked={includeChoices}
-              onChange={(event) => setIncludeChoices(event.target.checked)}
-              type="checkbox"
-            />
-            <span>Choice prompts</span>
-          </label>
-          <label className="field checkbox-field">
-            <input
-              checked={matureContentEnabled}
-              onChange={(event) => setMatureContentEnabled(event.target.checked)}
-              type="checkbox"
-            />
-            <span>Mature content enabled</span>
-          </label>
-          <label className="field">
-            <span>Runtime Notes</span>
-            <textarea
-              value={runtimeNotes}
-              onChange={(event) => setRuntimeNotes(event.target.value)}
-              rows={2}
-            />
-          </label>
-          <div className="button-row">
-            <button className="secondary-button" disabled={busy} onClick={testProvider} type="button">
-              <Activity size={16} />
-              <span>Test</span>
-            </button>
-            <button disabled={busy || !selectedCampaign} onClick={saveRuntimeSettings} type="button">
-              <CheckCircle2 size={17} />
-              <span>Save</span>
-            </button>
-          </div>
-        </section>
-
-        <section className="panel setup-panel">
-          <div className="section-title">
-            <Wand2 size={16} />
-            <span>Setup</span>
-          </div>
-          <div className="setup-chat" aria-live="polite">
-            {setupConversation.length === 0 ? (
-              <p className="empty">No setup turns yet.</p>
-            ) : (
-              setupConversation.slice(-6).map((message, index) => (
-                <article className={`setup-message ${message.role}`} key={`${message.role}:${index}`}>
-                  <span>{message.role === 'user' ? 'You' : 'Guide'}</span>
-                  <p>{message.content}</p>
-                </article>
-              ))
-            )}
-          </div>
-          <form className="setup-compose" onSubmit={askSetupAssistant}>
-            <textarea
-              value={setupInput}
-              onChange={(event) => setSetupInput(event.target.value)}
-              rows={4}
-              placeholder="Describe the campaign you want"
-            />
-            <button disabled={busy || !setupInput.trim()} type="submit">
-              <Wand2 size={17} />
-              <span>Draft</span>
-            </button>
-          </form>
-          <div className="button-row">
-            <button className="secondary-button" disabled={busy} onClick={reviewDraft} type="button">
-              <ListChecks size={16} />
-              <span>Review</span>
-            </button>
-            <button disabled={busy} onClick={bootstrapCampaign} type="button">
-              <CheckCircle2 size={17} />
-              <span>Approve</span>
-            </button>
-          </div>
-        </section>
-
-        <section className="panel">
-          <div className="section-title">
-            <ListChecks size={16} />
-            <span>Draft</span>
-          </div>
-          <label className="field">
-            <span>Story</span>
-            <input
-              value={setupDraft.story_name || ''}
-              onChange={(event) => updateSetupDraft({ story_name: event.target.value })}
-            />
-          </label>
-          <label className="field">
-            <span>Setting</span>
-            <textarea
-              value={setupDraft.setting || ''}
-              onChange={(event) => updateSetupDraft({ setting: event.target.value })}
-              rows={3}
-            />
-          </label>
-          <label className="field">
-            <span>Genre</span>
-            <input
-              value={setupDraft.genre_vibe || ''}
-              onChange={(event) => updateSetupDraft({ genre_vibe: event.target.value })}
-            />
-          </label>
-          <label className="field">
-            <span>Tone</span>
-            <input value={setupDraft.tone || ''} onChange={(event) => updateSetupDraft({ tone: event.target.value })} />
-          </label>
-          <label className="field">
-            <span>Themes</span>
-            <textarea
-              value={listToText(setupDraft.themes)}
-              onChange={(event) => updateSetupDraft({ themes: textToList(event.target.value) })}
-              rows={3}
-            />
-          </label>
-          <label className="field">
-            <span>Context</span>
-            <textarea
-              value={setupDraft.context_summary || ''}
-              onChange={(event) => updateSetupDraft({ context_summary: event.target.value })}
-              rows={3}
-            />
-          </label>
-          <label className="field">
-            <span>Lore</span>
-            <textarea
-              value={setupDraft.lore_text || ''}
-              onChange={(event) => updateSetupDraft({ lore_text: event.target.value })}
-              rows={4}
-            />
-          </label>
-          <label className="field">
-            <span>Preferences</span>
-            <textarea
-              value={listToText(setupDraft.play_preferences)}
-              onChange={(event) => updateSetupDraft({ play_preferences: textToList(event.target.value) })}
-              rows={4}
-            />
-          </label>
-          <label className="field checkbox-field">
-            <input
-              checked={setupDraft.allow_inference}
-              onChange={(event) => updateSetupDraft({ allow_inference: event.target.checked })}
-              type="checkbox"
-            />
-            <span>Allow inference</span>
-          </label>
-          <label className="field">
-            <span>PC Name</span>
-            <input
-              value={setupDraft.player_character.name || ''}
-              onChange={(event) => updatePlayerDraft({ name: event.target.value })}
-            />
-          </label>
-          <label className="field">
-            <span>PC Concept</span>
-            <textarea
-              value={setupDraft.player_character.concept || ''}
-              onChange={(event) => updatePlayerDraft({ concept: event.target.value })}
-              rows={3}
-            />
-          </label>
-          <label className="field">
-            <span>PC Goals</span>
-            <textarea
-              value={listToText(setupDraft.player_character.goals)}
-              onChange={(event) => updatePlayerDraft({ goals: textToList(event.target.value) })}
-              rows={3}
-            />
-          </label>
-          <label className="field">
-            <span>PC Edges</span>
-            <textarea
-              value={listToText(setupDraft.player_character.edges)}
-              onChange={(event) => updatePlayerDraft({ edges: textToList(event.target.value) })}
-              rows={3}
-            />
-          </label>
-          <label className="field">
-            <span>PC Complications</span>
-            <textarea
-              value={listToText(setupDraft.player_character.complications)}
-              onChange={(event) => updatePlayerDraft({ complications: textToList(event.target.value) })}
-              rows={3}
-            />
-          </label>
-        </section>
-
-        {setupReview && (
-          <section className="panel">
-            <div className="section-title">
-              <CheckCircle2 size={16} />
-              <span>Review</span>
-            </div>
-            <div className={setupReview.ready_to_bootstrap ? 'status ok' : 'status warn'}>
-              <Activity size={15} />
-              <span>{setupReview.ready_to_bootstrap ? 'Ready' : 'Needs edits'}</span>
-            </div>
-            {setupReview.summary && (
-              <div className="review-card">
-                <strong>{setupReview.summary.title}</strong>
-                <p>{setupReview.summary.premise}</p>
-                <p>{setupReview.summary.opening_hook}</p>
-              </div>
-            )}
-            {setupReview.findings.length > 0 && (
-              <div className="finding-list">
-                {setupReview.findings.map((finding, index) => (
-                  <div className={`finding ${finding.severity}`} key={`${finding.field}:${index}`}>
-                    <span>{finding.field}</span>
-                    <p>{finding.message}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-        )}
-
-        <section className="panel">
-          <div className="section-title">
-            <MessageSquareText size={16} />
-            <span>Memory</span>
-          </div>
-          <p className="recap">{bundle?.recap || 'No recap loaded.'}</p>
-        </section>
-
-        {toast && <div className={`toast ${toast.tone}`}>{toast.message}</div>}
-      </aside>
+      )}
     </main>
   );
 }
