@@ -84,7 +84,7 @@ def list_play_sessions(campaign_id: str | None = Query(default=None)) -> list[Pl
     summary="Get recent local play transcript entries.",
 )
 def get_play_history(
-    limit: int = Query(default=20, ge=1, le=200),
+    limit: int = Query(default=20, ge=1, le=1000),
     campaign_id: str | None = Query(default=None),
     session_id: str | None = Query(default=None),
 ) -> list[PlayTranscriptEntry]:

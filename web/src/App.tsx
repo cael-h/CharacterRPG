@@ -290,9 +290,20 @@ function App() {
       return;
     }
     if (uiMode === 'play' && !selectedCampaign && campaignPayload[0]?.campaign_id) {
-      setSelectedCampaign(campaignPayload[0].campaign_id);
+      const campaignId = campaignPayload[0].campaign_id;
+      const firstSession = sessionPayload.find((session) => session.campaign_id === campaignId);
+      setSelectedCampaign(campaignId);
+      setSelectedSession(firstSession?.session_id || 'main');
+      setSessionTitle(firstSession?.title || 'Main');
+    } else if (uiMode === 'play' && selectedCampaign && selectedSession === 'main') {
+      const campaignSessions = sessionPayload.filter((session) => session.campaign_id === selectedCampaign);
+      const hasMain = campaignSessions.some((session) => session.session_id === 'main');
+      if (!hasMain && campaignSessions[0]) {
+        setSelectedSession(campaignSessions[0].session_id);
+        setSessionTitle(campaignSessions[0].title || campaignSessions[0].session_id);
+      }
     }
-  }, [api, selectedCampaign, uiMode]);
+  }, [api, selectedCampaign, selectedSession, uiMode]);
 
   const refreshActive = useCallback(async () => {
     if (!selectedCampaign) return;
@@ -305,7 +316,7 @@ function App() {
     try {
       [bundlePayload, historyPayload] = await Promise.all([
         api<CampaignBundle>(`/campaign/bundle?${sessionQuery}`),
-        api<TranscriptEntry[]>(`/play/history?limit=40&${sessionQuery}`),
+        api<TranscriptEntry[]>(`/play/history?limit=500&${sessionQuery}`),
       ]);
     } catch {
       bundlePayload = await api<CampaignBundle>(`/campaign/bundle?${campaignQuery}`);
