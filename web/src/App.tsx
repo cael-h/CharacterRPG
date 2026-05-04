@@ -1,21 +1,31 @@
 import {
   Activity,
+  ArrowDown,
+  ArrowUp,
   BookOpen,
   Boxes,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Clock3,
+  FileText,
   GitBranch,
   ListChecks,
+  MapPinned,
   Menu,
   MessageSquareText,
+  Network,
   PanelRight,
   RefreshCw,
+  Search,
   Send,
   Server,
   Settings2,
   Wand2,
   X,
+  type LucideIcon,
 } from 'lucide-react';
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 type ProviderDescriptor = {
   provider: string;
@@ -65,14 +75,26 @@ type CampaignBundle = {
   scenario: {
     title: string;
     premise: string;
+    setting: string;
     opening_hook: string;
     genre_vibe: string;
     tone: string;
+    themes?: string[];
   };
   event_queue: string[];
+  relationship_graph: Record<string, Record<string, string>>;
+  rpg_characters: CharacterProfile[];
   story_threads: StoryThread[];
   timeline: string[];
   recap: string;
+};
+
+type CharacterProfile = {
+  name: string;
+  role: string;
+  public_summary: string;
+  goals: string[];
+  traits: string[];
 };
 
 type StoryThread = {
@@ -156,7 +178,51 @@ type RuntimeSettings = {
 
 type Toast = { tone: 'info' | 'error' | 'success'; message: string } | null;
 
+type MainTab = 'transcript' | 'recap' | 'timeline' | 'relationships' | 'locations';
+
+type TranscriptMatch = {
+  index: number;
+  turn: number;
+  role: TranscriptEntry['role'];
+};
+
+type LocationTrailItem = {
+  label: string;
+  detail: string;
+  tone: 'current' | 'scene' | 'timeline';
+};
+
 const API_BASE = 'http://127.0.0.1:4100';
+const DEFAULT_TRANSCRIPT_JUMP_TURNS = 10;
+const TRANSCRIPT_JUMP_STORAGE_KEY = 'characterRpgTranscriptJumpTurns';
+
+const mainTabs: { id: MainTab; label: string; Icon: LucideIcon }[] = [
+  { id: 'transcript', label: 'Transcript', Icon: MessageSquareText },
+  { id: 'recap', label: 'Recap', Icon: FileText },
+  { id: 'timeline', label: 'Timeline', Icon: Clock3 },
+  { id: 'relationships', label: 'Relationships', Icon: Network },
+  { id: 'locations', label: 'Locations', Icon: MapPinned },
+];
+
+const readStoredJumpTurns = () => {
+  try {
+    const stored = window.localStorage.getItem(TRANSCRIPT_JUMP_STORAGE_KEY);
+    const parsed = Number(stored);
+    return Number.isFinite(parsed) && parsed >= 1 ? Math.min(100, Math.round(parsed)) : DEFAULT_TRANSCRIPT_JUMP_TURNS;
+  } catch {
+    return DEFAULT_TRANSCRIPT_JUMP_TURNS;
+  }
+};
+
+const clampJumpTurns = (value: number) => Math.max(1, Math.min(100, Math.round(value)));
+
+const persistJumpTurns = (value: number) => {
+  try {
+    window.localStorage.setItem(TRANSCRIPT_JUMP_STORAGE_KEY, String(value));
+  } catch {
+    // Browser storage can be unavailable in private or embedded contexts.
+  }
+};
 
 const maturePreference =
   'Mature/NSFW material is allowed when it naturally follows from an adult story, but do not force it or make it the point of play.';
@@ -238,6 +304,12 @@ function App() {
   const [showSidebar, setShowSidebar] = useState(false);
   const [showInspector, setShowInspector] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [activeMainTab, setActiveMainTab] = useState<MainTab>('transcript');
+  const [transcriptSearch, setTranscriptSearch] = useState('');
+  const [activeSearchIndex, setActiveSearchIndex] = useState(0);
+  const [isTranscriptScrolledBack, setIsTranscriptScrolledBack] = useState(false);
+  const [transcriptJumpTurns, setTranscriptJumpTurns] = useState(readStoredJumpTurns);
+  const transcriptRef = useRef<HTMLDivElement | null>(null);
 
   const selectedProviderInfo = useMemo(
     () => providers.find((provider) => provider.provider === selectedProvider),
@@ -251,6 +323,73 @@ function App() {
       ),
     [selectedCampaign, selectedSession, sessions],
   );
+
+  const loadedTurns = useMemo(() => {
+    const turns = Array.from(new Set(history.map((entry) => entry.turn)));
+    turns.sort((a, b) => a - b);
+    return turns;
+  }, [history]);
+
+  const transcriptQuery = transcriptSearch.trim().toLowerCase();
+
+  const transcriptMatches = useMemo<TranscriptMatch[]>(() => {
+    if (!transcriptQuery) return [];
+    return history.flatMap((entry, index) =>
+      entry.content.toLowerCase().includes(transcriptQuery)
+        ? [{ index, turn: entry.turn, role: entry.role }]
+        : [],
+    );
+  }, [history, transcriptQuery]);
+
+  const transcriptMatchIndexes = useMemo(
+    () => new Set(transcriptMatches.map((match) => match.index)),
+    [transcriptMatches],
+  );
+
+  const activeSearchEntryIndex = transcriptMatches[activeSearchIndex]?.index ?? -1;
+
+  const relationshipEntries = useMemo(
+    () =>
+      Object.entries(bundle?.relationship_graph || {}).flatMap(([source, targets]) =>
+        Object.entries(targets || {}).map(([target, description]) => ({ source, target, description })),
+      ),
+    [bundle],
+  );
+
+  const relationshipThreads = useMemo(
+    () => (bundle?.story_threads || []).filter((thread) => thread.type === 'relationship'),
+    [bundle],
+  );
+
+  const timelineEntries = useMemo(() => [...(bundle?.timeline || [])].reverse(), [bundle]);
+
+  const locationTrail = useMemo<LocationTrailItem[]>(() => {
+    if (!bundle) return [];
+    const items: LocationTrailItem[] = [];
+    const currentLocation = bundle.world_state.location?.trim();
+    if (currentLocation) {
+      items.push({
+        label: currentLocation,
+        detail: bundle.world_state.current_scene || bundle.scenario.setting || 'Current location',
+        tone: 'current',
+      });
+    }
+    if (bundle.scenario.setting && bundle.scenario.setting !== currentLocation) {
+      items.push({
+        label: bundle.scenario.setting,
+        detail: bundle.scenario.premise,
+        tone: 'scene',
+      });
+    }
+    for (const entry of bundle.timeline.slice(-10).reverse()) {
+      items.push({
+        label: entry.replace(/^Turn\s+\d+:\s*/i, '').slice(0, 72),
+        detail: entry,
+        tone: 'timeline',
+      });
+    }
+    return items;
+  }, [bundle]);
 
   const api = useCallback(
     async <T,>(path: string, init?: RequestInit): Promise<T> => {
@@ -269,6 +408,80 @@ function App() {
     },
     [apiBase],
   );
+
+  const scrollToEntryIndex = useCallback((entryIndex: number) => {
+    const container = transcriptRef.current;
+    const target = container?.querySelector<HTMLElement>(`[data-entry-index="${entryIndex}"]`);
+    target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
+  const scrollTranscriptToTop = useCallback(() => {
+    transcriptRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  const scrollTranscriptToBottom = useCallback(() => {
+    const container = transcriptRef.current;
+    if (!container) return;
+    container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+    setIsTranscriptScrolledBack(false);
+  }, []);
+
+  const scrollToTurn = useCallback((turn: number) => {
+    const container = transcriptRef.current;
+    const target = container?.querySelector<HTMLElement>(`[data-turn="${turn}"]`);
+    target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
+  const findVisibleTurn = useCallback(() => {
+    const container = transcriptRef.current;
+    if (!container) return loadedTurns[0] || 0;
+    const containerTop = container.getBoundingClientRect().top + 12;
+    const visibleEntry = Array.from(container.querySelectorAll<HTMLElement>('[data-turn]')).find(
+      (entry) => entry.getBoundingClientRect().bottom >= containerTop,
+    );
+    return Number(visibleEntry?.dataset.turn) || loadedTurns[0] || 0;
+  }, [loadedTurns]);
+
+  const jumpTranscriptTurns = useCallback(
+    (direction: -1 | 1) => {
+      if (loadedTurns.length === 0) return;
+      const firstTurn = loadedTurns[0];
+      const lastTurn = loadedTurns[loadedTurns.length - 1];
+      const currentTurn = findVisibleTurn();
+      const boundedTurn = Math.max(firstTurn, Math.min(lastTurn, currentTurn + direction * transcriptJumpTurns));
+      const targetTurn =
+        direction > 0
+          ? loadedTurns.find((turn) => turn >= boundedTurn) || lastTurn
+          : [...loadedTurns].reverse().find((turn) => turn <= boundedTurn) || firstTurn;
+      scrollToTurn(targetTurn);
+    },
+    [findVisibleTurn, loadedTurns, scrollToTurn, transcriptJumpTurns],
+  );
+
+  const handleTranscriptScroll = useCallback(() => {
+    const container = transcriptRef.current;
+    if (!container) return;
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    const nextScrolledBack = distanceFromBottom > 120;
+    setIsTranscriptScrolledBack((current) => (current === nextScrolledBack ? current : nextScrolledBack));
+  }, []);
+
+  const goToSearchMatch = useCallback(
+    (direction: -1 | 1) => {
+      if (transcriptMatches.length === 0) return;
+      const nextIndex = (activeSearchIndex + direction + transcriptMatches.length) % transcriptMatches.length;
+      setActiveSearchIndex(nextIndex);
+      scrollToEntryIndex(transcriptMatches[nextIndex].index);
+    },
+    [activeSearchIndex, scrollToEntryIndex, transcriptMatches],
+  );
+
+  const handleJumpTurnsChange = (value: string) => {
+    const parsed = Number(value);
+    const nextValue = clampJumpTurns(Number.isFinite(parsed) ? parsed : DEFAULT_TRANSCRIPT_JUMP_TURNS);
+    setTranscriptJumpTurns(nextValue);
+    persistJumpTurns(nextValue);
+  };
 
   const refreshCatalog = useCallback(async () => {
     const [providerPayload, campaignPayload, sessionPayload] = await Promise.all([
@@ -316,7 +529,7 @@ function App() {
     try {
       [bundlePayload, historyPayload] = await Promise.all([
         api<CampaignBundle>(`/campaign/bundle?${sessionQuery}`),
-        api<TranscriptEntry[]>(`/play/history?limit=500&${sessionQuery}`),
+        api<TranscriptEntry[]>(`/play/history?limit=1000&${sessionQuery}`),
       ]);
     } catch {
       bundlePayload = await api<CampaignBundle>(`/campaign/bundle?${campaignQuery}`);
@@ -335,6 +548,30 @@ function App() {
       setHistory([]);
     });
   }, [refreshActive]);
+
+  useEffect(() => {
+    setActiveSearchIndex(0);
+  }, [selectedCampaign, selectedSession, transcriptQuery]);
+
+  useEffect(() => {
+    if (!transcriptQuery || transcriptMatches.length === 0) return;
+    const clampedIndex = Math.min(activeSearchIndex, transcriptMatches.length - 1);
+    if (clampedIndex !== activeSearchIndex) {
+      setActiveSearchIndex(clampedIndex);
+      return;
+    }
+    scrollToEntryIndex(transcriptMatches[clampedIndex].index);
+  }, [activeSearchIndex, scrollToEntryIndex, transcriptMatches, transcriptQuery]);
+
+  useEffect(() => {
+    if (activeMainTab !== 'transcript' || isTranscriptScrolledBack) return;
+    const container = transcriptRef.current;
+    if (!container) return;
+    window.requestAnimationFrame(() => {
+      container.scrollTo({ top: container.scrollHeight });
+      setIsTranscriptScrolledBack(false);
+    });
+  }, [activeMainTab, history.length, isTranscriptScrolledBack]);
 
   useEffect(() => {
     if (!selectedCampaign) return;
@@ -603,6 +840,7 @@ function App() {
     setBundle(null);
     setHistory([]);
     setUiMode('setup');
+    setActiveMainTab('transcript');
     setShowSidebar(false);
   };
 
@@ -612,6 +850,7 @@ function App() {
     setSelectedSession(firstSession?.session_id || 'main');
     setSessionTitle(firstSession?.title || 'Main');
     setUiMode('play');
+    setActiveMainTab('transcript');
     setShowSidebar(false);
   };
 
@@ -620,6 +859,7 @@ function App() {
     setSelectedSession(session.session_id);
     setSessionTitle(session.title || session.session_id);
     setUiMode('play');
+    setActiveMainTab('transcript');
     setShowSidebar(false);
   };
 
@@ -807,19 +1047,228 @@ function App() {
               </div>
             </section>
 
-            <div className="transcript" aria-live="polite">
-              {history.length === 0 ? (
-                <div className="empty-state">
-                  <MessageSquareText size={28} />
-                  <p>{bundle?.scenario.opening_hook || 'Start the session with your first move.'}</p>
-                </div>
-              ) : (
-                history.map((entry, index) => (
-                  <article className={`bubble ${entry.role}`} key={`${entry.turn}:${entry.role}:${index}`}>
-                    <span>{entry.role === 'user' ? 'Player' : 'GM'}</span>
-                    <p>{entry.content}</p>
-                  </article>
-                ))
+            <nav className="main-tabs" aria-label="Story views">
+              {mainTabs.map(({ id, label, Icon }) => (
+                <button
+                  aria-current={activeMainTab === id ? 'page' : undefined}
+                  className={`tab-button ${activeMainTab === id ? 'selected' : ''}`}
+                  key={id}
+                  onClick={() => setActiveMainTab(id)}
+                  type="button"
+                >
+                  <Icon size={15} />
+                  <span>{label}</span>
+                </button>
+              ))}
+            </nav>
+
+            <div className="play-tab-content">
+              {activeMainTab === 'transcript' && (
+                <>
+                  <div className="transcript-toolbar" aria-label="Transcript navigation">
+                    <label className="transcript-search">
+                      <Search size={16} />
+                      <input
+                        aria-label="Search transcript"
+                        placeholder="Search transcript"
+                        value={transcriptSearch}
+                        onChange={(event) => setTranscriptSearch(event.target.value)}
+                      />
+                    </label>
+                    <div className="search-status">
+                      {transcriptQuery
+                        ? transcriptMatches.length > 0
+                          ? `${activeSearchIndex + 1}/${transcriptMatches.length}`
+                          : '0/0'
+                        : `${history.length} entries`}
+                    </div>
+                    <div className="transcript-actions">
+                      <button
+                        aria-label="Jump to beginning"
+                        className="compact-control"
+                        disabled={history.length === 0}
+                        onClick={scrollTranscriptToTop}
+                        title="Beginning"
+                        type="button"
+                      >
+                        <ArrowUp size={16} />
+                      </button>
+                      <button
+                        aria-label={`Jump back ${transcriptJumpTurns} turns`}
+                        className="compact-control text-control"
+                        disabled={history.length === 0}
+                        onClick={() => jumpTranscriptTurns(-1)}
+                        title={`Back ${transcriptJumpTurns} turns`}
+                        type="button"
+                      >
+                        <ChevronUp size={15} />
+                        <span>-{transcriptJumpTurns}</span>
+                      </button>
+                      <button
+                        aria-label={`Jump forward ${transcriptJumpTurns} turns`}
+                        className="compact-control text-control"
+                        disabled={history.length === 0}
+                        onClick={() => jumpTranscriptTurns(1)}
+                        title={`Forward ${transcriptJumpTurns} turns`}
+                        type="button"
+                      >
+                        <span>+{transcriptJumpTurns}</span>
+                        <ChevronDown size={15} />
+                      </button>
+                      <button
+                        aria-label="Previous search result"
+                        className="compact-control"
+                        disabled={transcriptMatches.length === 0}
+                        onClick={() => goToSearchMatch(-1)}
+                        title="Previous match"
+                        type="button"
+                      >
+                        <ChevronUp size={16} />
+                      </button>
+                      <button
+                        aria-label="Next search result"
+                        className="compact-control"
+                        disabled={transcriptMatches.length === 0}
+                        onClick={() => goToSearchMatch(1)}
+                        title="Next match"
+                        type="button"
+                      >
+                        <ChevronDown size={16} />
+                      </button>
+                      <button
+                        aria-label="Jump to latest turn"
+                        className={`compact-control latest-control ${isTranscriptScrolledBack ? 'attention' : ''}`}
+                        disabled={history.length === 0 || !isTranscriptScrolledBack}
+                        onClick={scrollTranscriptToBottom}
+                        title="Latest"
+                        type="button"
+                      >
+                        <ArrowDown size={16} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="transcript" aria-live="polite" onScroll={handleTranscriptScroll} ref={transcriptRef}>
+                    {history.length === 0 ? (
+                      <div className="empty-state">
+                        <MessageSquareText size={28} />
+                        <p>{bundle?.scenario.opening_hook || 'Start the session with your first move.'}</p>
+                      </div>
+                    ) : (
+                      history.map((entry, index) => (
+                        <article
+                          className={`bubble ${entry.role} ${
+                            transcriptMatchIndexes.has(index) ? 'search-hit' : ''
+                          } ${activeSearchEntryIndex === index ? 'active-search-hit' : ''}`}
+                          data-entry-index={index}
+                          data-turn={entry.turn}
+                          key={`${entry.turn}:${entry.role}:${index}`}
+                        >
+                          <span>{entry.role === 'user' ? `Player / Turn ${entry.turn}` : `GM / Turn ${entry.turn}`}</span>
+                          <p>{entry.content}</p>
+                        </article>
+                      ))
+                    )}
+                  </div>
+                </>
+              )}
+
+              {activeMainTab === 'recap' && (
+                <section className="info-panel">
+                  <div className="section-title">
+                    <FileText size={16} />
+                    <span>Recap</span>
+                  </div>
+                  <p className="recap long-form">{bundle?.recap || 'No recap loaded.'}</p>
+                </section>
+              )}
+
+              {activeMainTab === 'timeline' && (
+                <section className="info-panel">
+                  <div className="section-title">
+                    <Clock3 size={16} />
+                    <span>Timeline</span>
+                  </div>
+                  {timelineEntries.length ? (
+                    <div className="timeline-list">
+                      {timelineEntries.map((entry, index) => (
+                        <article className="timeline-item" key={`${entry}:${index}`}>
+                          <span>{timelineEntries.length - index}</span>
+                          <p>{entry}</p>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="empty-state compact-empty">
+                      <Clock3 size={24} />
+                      <p>No timeline entries loaded.</p>
+                    </div>
+                  )}
+                </section>
+              )}
+
+              {activeMainTab === 'relationships' && (
+                <section className="info-panel">
+                  <div className="section-title">
+                    <Network size={16} />
+                    <span>Relationships</span>
+                  </div>
+                  {relationshipEntries.length ? (
+                    <div className="relationship-map">
+                      {relationshipEntries.map((edge, index) => (
+                        <article className="relationship-edge" key={`${edge.source}:${edge.target}:${index}`}>
+                          <strong>{edge.source}</strong>
+                          <span>{edge.target}</span>
+                          <p>{edge.description}</p>
+                        </article>
+                      ))}
+                    </div>
+                  ) : relationshipThreads.length ? (
+                    <div className="thread-list">
+                      {relationshipThreads.map((thread) => (
+                        <article className="thread-card" key={thread.thread_id}>
+                          <div>
+                            <strong>{thread.title}</strong>
+                            <span>{thread.status} / {thread.tension}/10</span>
+                          </div>
+                          <p>{thread.current_beat || thread.summary}</p>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="empty-state compact-empty">
+                      <Network size={24} />
+                      <p>No relationship entries loaded.</p>
+                    </div>
+                  )}
+                </section>
+              )}
+
+              {activeMainTab === 'locations' && (
+                <section className="info-panel">
+                  <div className="section-title">
+                    <MapPinned size={16} />
+                    <span>Locations</span>
+                  </div>
+                  {locationTrail.length ? (
+                    <div className="location-map">
+                      {locationTrail.map((item, index) => (
+                        <article className={`location-node ${item.tone}`} key={`${item.label}:${index}`}>
+                          <span>{index + 1}</span>
+                          <div>
+                            <strong>{item.label}</strong>
+                            <p>{item.detail}</p>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="empty-state compact-empty">
+                      <MapPinned size={24} />
+                      <p>No location entries loaded.</p>
+                    </div>
+                  )}
+                </section>
               )}
             </div>
 
@@ -1135,6 +1584,16 @@ function App() {
                     type="checkbox"
                   />
                   <span>Mature content enabled</span>
+                </label>
+                <label className="field">
+                  <span>Transcript Jump Turns</span>
+                  <input
+                    min={1}
+                    max={100}
+                    type="number"
+                    value={transcriptJumpTurns}
+                    onChange={(event) => handleJumpTurnsChange(event.target.value)}
+                  />
                 </label>
                 <label className="field">
                   <span>Runtime Notes</span>
