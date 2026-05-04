@@ -38,6 +38,13 @@ notify_failure() {
   fi
 }
 
+notify_info() {
+  message="$1"
+  if command -v termux-toast >/dev/null 2>&1; then
+    termux-toast "$message"
+  fi
+}
+
 start_backend() {
   if is_up "${BACKEND_URL}/health"; then
     return 0
@@ -62,6 +69,7 @@ start_frontend() {
   cd ..
 }
 
+notify_info "Opening CharacterRPG"
 start_backend
 if ! wait_for_url "${BACKEND_URL}/health" 30; then
   notify_failure "CharacterRPG backend did not start"
