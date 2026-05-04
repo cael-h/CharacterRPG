@@ -6,6 +6,7 @@ BACKEND_HOST="${CHARACTERRPG_BACKEND_HOST:-127.0.0.1}"
 BACKEND_PORT="${CHARACTERRPG_BACKEND_PORT:-4100}"
 FRONTEND_HOST="${CHARACTERRPG_FRONTEND_HOST:-127.0.0.1}"
 FRONTEND_PORT="${CHARACTERRPG_FRONTEND_PORT:-5173}"
+FRONTEND_MODE="${CHARACTERRPG_FRONTEND_MODE:-preview}"
 BACKEND_URL="http://${BACKEND_HOST}:${BACKEND_PORT}"
 FRONTEND_URL="http://${FRONTEND_HOST}:${FRONTEND_PORT}"
 LOG_FILE="${APP_DIR}/.runtime/android-launcher.log"
@@ -67,6 +68,28 @@ start_backend() {
   echo "$!" > .runtime/backend.pid
 }
 
+ensure_frontend_build() {
+  if [ "$FRONTEND_MODE" != "preview" ]; then
+    return 0
+  fi
+
+  needs_build=0
+  if [ ! -f web/dist/index.html ]; then
+    needs_build=1
+  elif find web/src web/public web/index.html web/package.json web/vite.config.ts -newer web/dist/index.html | grep -q .; then
+    needs_build=1
+  fi
+
+  if [ "$needs_build" -eq 0 ]; then
+    return 0
+  fi
+
+  log "building frontend for PWA preview"
+  cd web
+  npm run build >> ../.runtime/frontend-build.log 2>&1
+  cd ..
+}
+
 start_frontend() {
   if is_up "$FRONTEND_URL"; then
     log "frontend already reachable"
@@ -74,9 +97,15 @@ start_frontend() {
   fi
 
   log "starting frontend at ${FRONTEND_URL}"
+  ensure_frontend_build
   cd web
-  setsid npm run dev -- --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" \
-    > ../.runtime/frontend.log 2>&1 < /dev/null &
+  if [ "$FRONTEND_MODE" = "preview" ]; then
+    setsid ./node_modules/.bin/vite preview --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" \
+      > ../.runtime/frontend.log 2>&1 < /dev/null &
+  else
+    setsid npm run dev -- --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" \
+      > ../.runtime/frontend.log 2>&1 < /dev/null &
+  fi
   echo "$!" > ../.runtime/frontend.pid
   cd ..
 }
