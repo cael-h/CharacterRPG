@@ -8,9 +8,17 @@ FRONTEND_HOST="${CHARACTERRPG_FRONTEND_HOST:-127.0.0.1}"
 FRONTEND_PORT="${CHARACTERRPG_FRONTEND_PORT:-5173}"
 BACKEND_URL="http://${BACKEND_HOST}:${BACKEND_PORT}"
 FRONTEND_URL="http://${FRONTEND_HOST}:${FRONTEND_PORT}"
+LOG_FILE="${APP_DIR}/.runtime/android-launcher.log"
 
 cd "$APP_DIR"
 mkdir -p .runtime
+
+log() {
+  printf '%s %s\n' "$(date '+%F %T %z')" "$*" >> "$LOG_FILE"
+}
+
+trap 'status=$?; log "exit status ${status}"' EXIT
+log "launcher started pid=$$"
 
 is_up() {
   curl -fsS --max-time 2 "$1" >/dev/null 2>&1
@@ -47,9 +55,11 @@ notify_info() {
 
 start_backend() {
   if is_up "${BACKEND_URL}/health"; then
+    log "backend already healthy"
     return 0
   fi
 
+  log "starting backend at ${BACKEND_URL}"
   setsid .venv/bin/python -m uvicorn backend.app.main:app \
     --host "$BACKEND_HOST" \
     --port "$BACKEND_PORT" \
@@ -59,9 +69,11 @@ start_backend() {
 
 start_frontend() {
   if is_up "$FRONTEND_URL"; then
+    log "frontend already reachable"
     return 0
   fi
 
+  log "starting frontend at ${FRONTEND_URL}"
   cd web
   setsid npm run dev -- --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" \
     > ../.runtime/frontend.log 2>&1 < /dev/null &
@@ -82,4 +94,14 @@ if ! wait_for_url "$FRONTEND_URL" 30; then
   exit 1
 fi
 
-termux-open-url "$FRONTEND_URL"
+log "opening ${FRONTEND_URL}"
+if command -v am >/dev/null 2>&1; then
+  if am start -a android.intent.action.VIEW -d "$FRONTEND_URL" >> "$LOG_FILE" 2>&1; then
+    log "opened url with am"
+    exit 0
+  fi
+  log "am failed; falling back to termux-open-url"
+fi
+
+termux-open-url "$FRONTEND_URL" >> "$LOG_FILE" 2>&1
+log "opened url with termux-open-url"
