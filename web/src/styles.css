@@ -29,6 +29,7 @@
   --blue: #60a5fa;
   --green: #34d399;
   --shadow: 0 18px 42px rgba(0, 0, 0, 0.42);
+  --story-font-size: 15px;
 }
 
 * {
@@ -518,7 +519,7 @@ button:disabled {
   max-width: min(760px, 85%);
   padding: 14px 16px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 16px;
   background: var(--surface-strong);
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.24);
 }
@@ -564,7 +565,7 @@ button:disabled {
 .thread-card p {
   margin: 0;
   color: var(--text);
-  font-size: 15px;
+  font-size: var(--story-font-size);
   line-height: 1.6;
   white-space: pre-wrap;
 }
@@ -733,7 +734,7 @@ select,
 textarea {
   width: 100%;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 12px;
   outline: none;
   background: var(--bg);
   color: var(--ink);
@@ -744,6 +745,26 @@ textarea {
     border-color 0.2s ease,
     box-shadow 0.2s ease,
     background 0.2s ease;
+}
+
+input[type="range"] {
+  padding: 0;
+  accent-color: var(--primary);
+}
+
+.range-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 52px;
+  align-items: center;
+  gap: 12px;
+}
+
+.range-field strong {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: right;
 }
 
 input:focus,

@@ -25,7 +25,7 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 type ProviderDescriptor = {
   provider: string;
@@ -192,9 +192,15 @@ type LocationTrailItem = {
   tone: 'current' | 'scene' | 'timeline';
 };
 
+type AppShellStyle = CSSProperties & {
+  '--story-font-size': string;
+};
+
 const API_BASE = 'http://127.0.0.1:4100';
 const DEFAULT_TRANSCRIPT_JUMP_TURNS = 10;
 const TRANSCRIPT_JUMP_STORAGE_KEY = 'characterRpgTranscriptJumpTurns';
+const DEFAULT_STORY_FONT_SIZE = 15;
+const STORY_FONT_SIZE_STORAGE_KEY = 'characterRpgStoryFontSize';
 
 const mainTabs: { id: MainTab; label: string; Icon: LucideIcon }[] = [
   { id: 'transcript', label: 'Transcript', Icon: MessageSquareText },
@@ -216,9 +222,29 @@ const readStoredJumpTurns = () => {
 
 const clampJumpTurns = (value: number) => Math.max(1, Math.min(100, Math.round(value)));
 
+const readStoredStoryFontSize = () => {
+  try {
+    const stored = window.localStorage.getItem(STORY_FONT_SIZE_STORAGE_KEY);
+    const parsed = Number(stored);
+    return Number.isFinite(parsed) ? Math.max(13, Math.min(22, Math.round(parsed))) : DEFAULT_STORY_FONT_SIZE;
+  } catch {
+    return DEFAULT_STORY_FONT_SIZE;
+  }
+};
+
+const clampStoryFontSize = (value: number) => Math.max(13, Math.min(22, Math.round(value)));
+
 const persistJumpTurns = (value: number) => {
   try {
     window.localStorage.setItem(TRANSCRIPT_JUMP_STORAGE_KEY, String(value));
+  } catch {
+    // Browser storage can be unavailable in private or embedded contexts.
+  }
+};
+
+const persistStoryFontSize = (value: number) => {
+  try {
+    window.localStorage.setItem(STORY_FONT_SIZE_STORAGE_KEY, String(value));
   } catch {
     // Browser storage can be unavailable in private or embedded contexts.
   }
@@ -309,6 +335,7 @@ function App() {
   const [activeSearchIndex, setActiveSearchIndex] = useState(0);
   const [isTranscriptScrolledBack, setIsTranscriptScrolledBack] = useState(false);
   const [transcriptJumpTurns, setTranscriptJumpTurns] = useState(readStoredJumpTurns);
+  const [storyFontSize, setStoryFontSize] = useState(readStoredStoryFontSize);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
 
   const selectedProviderInfo = useMemo(
@@ -322,6 +349,11 @@ function App() {
         (session) => session.campaign_id === selectedCampaign && session.session_id === selectedSession,
       ),
     [selectedCampaign, selectedSession, sessions],
+  );
+
+  const appShellStyle = useMemo<AppShellStyle>(
+    () => ({ '--story-font-size': `${storyFontSize}px` }),
+    [storyFontSize],
   );
 
   const loadedTurns = useMemo(() => {
@@ -481,6 +513,13 @@ function App() {
     const nextValue = clampJumpTurns(Number.isFinite(parsed) ? parsed : DEFAULT_TRANSCRIPT_JUMP_TURNS);
     setTranscriptJumpTurns(nextValue);
     persistJumpTurns(nextValue);
+  };
+
+  const handleStoryFontSizeChange = (value: string) => {
+    const parsed = Number(value);
+    const nextValue = clampStoryFontSize(Number.isFinite(parsed) ? parsed : DEFAULT_STORY_FONT_SIZE);
+    setStoryFontSize(nextValue);
+    persistStoryFontSize(nextValue);
   };
 
   const refreshCatalog = useCallback(async () => {
@@ -869,7 +908,7 @@ function App() {
   };
 
   return (
-    <main className={`app-shell ${isSetupMode ? 'setup-mode' : 'play-mode'}`}>
+    <main className={`app-shell ${isSetupMode ? 'setup-mode' : 'play-mode'}`} style={appShellStyle}>
       {(showSidebar || showInspector) && (
         <button
           aria-label="Close mobile panels"
@@ -1594,6 +1633,20 @@ function App() {
                     value={transcriptJumpTurns}
                     onChange={(event) => handleJumpTurnsChange(event.target.value)}
                   />
+                </label>
+                <label className="field">
+                  <span>Story Font Size</span>
+                  <div className="range-field">
+                    <input
+                      aria-label="Story font size"
+                      min={13}
+                      max={22}
+                      type="range"
+                      value={storyFontSize}
+                      onChange={(event) => handleStoryFontSizeChange(event.target.value)}
+                    />
+                    <strong>{storyFontSize}px</strong>
+                  </div>
                 </label>
                 <label className="field">
                   <span>Runtime Notes</span>
