@@ -29,6 +29,21 @@ class LocalPlayRequest(BaseModel):
     include_choices: bool = False
 
 
+class TranscriptMutationRequest(BaseModel):
+    campaign_id: str | None = None
+    session_id: str | None = None
+    entry_index: int = Field(ge=0)
+    content: str | None = None
+    delete_entry: bool = False
+    mode: Literal["memory", "regenerate"] = "memory"
+    provider: str | None = None
+    model: str | None = None
+    provider_api_key: str | None = None
+    provider_base_url: str | None = None
+    session_title: str | None = None
+    include_choices: bool = False
+
+
 class RuntimeSettings(BaseModel):
     provider: str | None = None
     model: str | None = None
@@ -96,6 +111,18 @@ class LocalPlayResponse(BaseModel):
     reply: str
     transcript_entries_appended: int = Field(ge=0)
     used_history_turns: int = Field(ge=0)
+
+
+class TranscriptMutationResponse(BaseModel):
+    campaign_id: str
+    session_id: str
+    mode: Literal["memory", "regenerate"]
+    action: str
+    turn: int = Field(ge=0)
+    transcript_entries: int = Field(ge=0)
+    memory_sections_indexed: int = Field(ge=0)
+    backup_path: str
+    regenerated_reply: str | None = None
 
 
 class PlayCampaignSummary(BaseModel):

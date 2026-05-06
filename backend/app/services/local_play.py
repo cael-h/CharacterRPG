@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 from datetime import UTC, datetime
 from functools import lru_cache
 from typing import Any, Protocol
@@ -20,6 +21,8 @@ from backend.app.models.play import (
     PlayTranscriptEntry,
     RuntimeSettings,
     StructuredPlayTurn,
+    TranscriptMutationRequest,
+    TranscriptMutationResponse,
 )
 from backend.app.models.quest import QuestState
 from backend.app.models.story import StoryThread
@@ -193,6 +196,12 @@ def _build_runtime_instructions(
         "- Default to narrative judgment instead of dice unless the campaign preferences explicitly call for rolls in a specific case.\n"
         "- Drive the scene forward. NPCs and the environment should take small but meaningful actions, offer invitations, interrupt, reveal, complicate, or emotionally escalate when appropriate instead of only reacting passively.\n"
         "- Do not merely paraphrase the player's move and ask what happens next. Advance the moment while preserving player agency.\n"
+        "\nPLAYER-INTERPRETATION POLICY\n"
+        "- Describe observable action, dialogue, body language, sensory detail, and physical consequences. Let the player interpret what those details mean.\n"
+        "- Do not narrate the player character's thoughts, assumptions, feelings, conclusions, or sense that a statement 'lands' unless the player explicitly wrote that reaction.\n"
+        "- Avoid empty interpretive filler such as 'That lands,' 'That alone says something,' 'You can tell,' 'It is clear,' or similar claims that tell the player what to think.\n"
+        "- If an NPC implies they know something hidden, decide the concrete hidden fact before implying it. If it is not revealed in `reply`, record the unrevealed fact in `npc_memory_notes`, `notes_append`, or a story thread update so it can be paid off later.\n"
+        "- Do not create vague mystery implications as mood. Every implied secret should have a specific answer, holder, and plausible reveal path.\n"
         f"{player_character_policy}"
         f"{mature_policy}"
         f"{choice_policy}"
@@ -202,6 +211,7 @@ def _build_runtime_instructions(
         "- Do not put [OOC], GM notes, mechanics notes, JSON, or state bookkeeping in `reply`; put changed facts in the update fields.\n"
         "- Use update fields only for concrete changes established by this turn. Leave fields empty when nothing changed.\n"
         "- Keep state updates conservative. Do not close quests, move location, or change pressure unless the reply actually establishes it.\n"
+        "- Use `npc_memory_notes` for unrevealed NPC knowledge, planned secrets, and private motivations implied by the reply.\n"
         "- JSON shape:\n"
         "{\n"
         '  "reply": "player-facing narration and dialogue only",\n'
@@ -661,6 +671,223 @@ def _resolve_runtime_settings(
     if session_summary is not None and not has_active_settings:
         runtime_settings = storage.for_campaign(session_summary.campaign_id).load_runtime_settings()
     return runtime_settings
+
+
+def _max_history_turn(history: list[PlayTranscriptEntry]) -> int:
+    return max((entry.turn for entry in history), default=0)
+
+
+def _resolve_transcript_mutation_storage(
+    request: TranscriptMutationRequest,
+    storage: CampaignStorage,
+) -> tuple[CampaignStorage, PlaySessionSummary | None]:
+    if request.session_id:
+        active_storage = storage.resolve_session_storage(request.session_id, request.campaign_id)
+        return active_storage, active_storage.load_session_summary()
+    if request.campaign_id:
+        campaign_storage = storage.for_campaign(request.campaign_id)
+        if not campaign_storage.has_bundle():
+            raise ValueError(f"Campaign {request.campaign_id!r} does not exist.")
+        return campaign_storage, None
+    return storage, storage.load_session_summary() if storage.session_metadata_path.exists() else None
+
+
+def _backup_transcript_storage(active_storage: CampaignStorage) -> str:
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+    backup_dir = active_storage.base_dir.parent / "_transcript_edit_backups" / f"{stamp}-{active_storage.base_dir.name}"
+    backup_dir.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(active_storage.base_dir, backup_dir)
+    return str(backup_dir)
+
+
+def _restore_transcript_storage(active_storage: CampaignStorage, backup_path: str) -> None:
+    if active_storage.base_dir.exists():
+        shutil.rmtree(active_storage.base_dir)
+    shutil.copytree(backup_path, active_storage.base_dir)
+
+
+def _memory_index_request(
+    active_storage: CampaignStorage,
+    session_summary: PlaySessionSummary | None,
+):
+    from backend.app.models.transcript_memory import TranscriptMemoryBuildRequest
+
+    if session_summary is not None:
+        return TranscriptMemoryBuildRequest(
+            campaign_id=session_summary.campaign_id,
+            session_id=session_summary.session_id,
+            refresh=True,
+        )
+    campaign_id = None if active_storage.current_campaign_id == "root" else active_storage.current_campaign_id
+    return TranscriptMemoryBuildRequest(campaign_id=campaign_id, session_id=None, refresh=True)
+
+
+def _rebuild_transcript_memory(
+    active_storage: CampaignStorage,
+    storage: CampaignStorage,
+    session_summary: PlaySessionSummary | None,
+) -> int:
+    from backend.app.services.transcript_memory import build_transcript_memory_index
+
+    memory_index = build_transcript_memory_index(
+        _memory_index_request(active_storage, session_summary),
+        storage,
+    )
+    return memory_index.sections_indexed
+
+
+def _touch_transcript_container(
+    active_storage: CampaignStorage,
+    session_summary: PlaySessionSummary | None,
+    title: str | None = None,
+) -> PlaySessionSummary | None:
+    if session_summary is not None:
+        return active_storage.touch_session_summary(campaign_id=session_summary.campaign_id, title=title)
+    if active_storage.current_campaign_id != "root":
+        active_storage.touch_campaign_summary(title=title)
+    return None
+
+
+def _rewind_bundle_to_history(active_storage: CampaignStorage, history: list[PlayTranscriptEntry]) -> None:
+    if not active_storage.has_bundle():
+        return
+    bundle = active_storage.load_bundle()
+    bundle.world_state.turn = _max_history_turn(history)
+    active_storage.save_bundle(bundle)
+
+
+def _find_regeneration_prompt_index(
+    original_history: list[PlayTranscriptEntry],
+    *,
+    original_index: int,
+    original_entry: PlayTranscriptEntry,
+    deleted: bool,
+) -> int | None:
+    if original_entry.role == "user":
+        return None if deleted else original_index
+
+    start_index = min(original_index, len(original_history) - 1)
+    for index in range(start_index, -1, -1):
+        if original_history[index].role == "user":
+            return index
+    return None
+
+
+def _effective_mutation_identity(
+    active_storage: CampaignStorage,
+    session_summary: PlaySessionSummary | None,
+) -> tuple[str, str]:
+    if session_summary is not None:
+        return session_summary.campaign_id, session_summary.session_id
+    return active_storage.current_campaign_id, "root"
+
+
+def mutate_play_transcript(
+    request: TranscriptMutationRequest,
+    storage: CampaignStorage,
+) -> TranscriptMutationResponse:
+    active_storage, session_summary = _resolve_transcript_mutation_storage(request, storage)
+    history = active_storage.load_play_history()
+    if request.entry_index >= len(history):
+        raise ValueError(f"Transcript entry index {request.entry_index} does not exist.")
+
+    if not request.delete_entry and not (request.content or "").strip():
+        raise ValueError("content must not be empty unless delete_entry is true.")
+
+    backup_path = _backup_transcript_storage(active_storage)
+    original_entry = history[request.entry_index]
+    mutated_history = list(history)
+    action = "deleted" if request.delete_entry else "edited"
+
+    if request.delete_entry:
+        del mutated_history[request.entry_index]
+    else:
+        payload = model_dump(original_entry)
+        payload["content"] = (request.content or "").strip()
+        mutated_history[request.entry_index] = model_validate(PlayTranscriptEntry, payload)
+
+    regenerated: LocalPlayResponse | None = None
+    if request.mode == "regenerate":
+        prompt_index = _find_regeneration_prompt_index(
+            history,
+            original_index=request.entry_index,
+            original_entry=original_entry,
+            deleted=request.delete_entry,
+        )
+        if prompt_index is None:
+            base_history = mutated_history[: request.entry_index]
+            active_storage.save_play_history(base_history)
+            _rewind_bundle_to_history(active_storage, base_history)
+            memory_sections = _rebuild_transcript_memory(active_storage, storage, session_summary)
+            session_summary = _touch_transcript_container(active_storage, session_summary, request.session_title)
+            campaign_id, session_id = _effective_mutation_identity(active_storage, session_summary)
+            return TranscriptMutationResponse(
+                campaign_id=campaign_id,
+                session_id=session_id,
+                mode=request.mode,
+                action="deleted_and_truncated",
+                turn=_max_history_turn(base_history),
+                transcript_entries=len(base_history),
+                memory_sections_indexed=memory_sections,
+                backup_path=backup_path,
+                regenerated_reply=None,
+            )
+
+        prompt_entry = mutated_history[prompt_index]
+        base_history = mutated_history[:prompt_index]
+        active_storage.save_play_history(base_history)
+        _rewind_bundle_to_history(active_storage, base_history)
+        session_summary = _touch_transcript_container(active_storage, session_summary, request.session_title)
+        try:
+            regenerated = generate_local_play_response(
+                LocalPlayRequest(
+                    user_message=prompt_entry.content,
+                    provider=request.provider,
+                    model=request.model,
+                    provider_api_key=request.provider_api_key,
+                    provider_base_url=request.provider_base_url,
+                    campaign_id=request.campaign_id,
+                    session_id=request.session_id,
+                    create_session_if_missing=False,
+                    session_title=request.session_title,
+                    include_choices=request.include_choices,
+                ),
+                storage,
+            )
+        except RuntimeError:
+            _restore_transcript_storage(active_storage, backup_path)
+            raise
+        refreshed_history = active_storage.load_play_history()
+        memory_sections = len(active_storage.load_transcript_memory())
+        session_summary = active_storage.load_session_summary() if request.session_id else session_summary
+        campaign_id, session_id = _effective_mutation_identity(active_storage, session_summary)
+        return TranscriptMutationResponse(
+            campaign_id=campaign_id,
+            session_id=session_id,
+            mode=request.mode,
+            action=f"{action}_and_regenerated",
+            turn=regenerated.turn,
+            transcript_entries=len(refreshed_history),
+            memory_sections_indexed=memory_sections,
+            backup_path=backup_path,
+            regenerated_reply=regenerated.reply,
+        )
+
+    active_storage.save_play_history(mutated_history)
+    memory_sections = _rebuild_transcript_memory(active_storage, storage, session_summary)
+    session_summary = _touch_transcript_container(active_storage, session_summary, request.session_title)
+    campaign_id, session_id = _effective_mutation_identity(active_storage, session_summary)
+    return TranscriptMutationResponse(
+        campaign_id=campaign_id,
+        session_id=session_id,
+        mode=request.mode,
+        action=f"{action}_and_reindexed",
+        turn=_max_history_turn(mutated_history),
+        transcript_entries=len(mutated_history),
+        memory_sections_indexed=memory_sections,
+        backup_path=backup_path,
+        regenerated_reply=None,
+    )
 
 
 def generate_local_play_response(

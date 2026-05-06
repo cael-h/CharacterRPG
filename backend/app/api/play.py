@@ -12,6 +12,8 @@ from backend.app.models.play import (
     PlayTranscriptEntry,
     RuntimeSettings,
     RuntimeSettingsRequest,
+    TranscriptMutationRequest,
+    TranscriptMutationResponse,
 )
 from backend.app.models.review import SessionReviewRequest, SessionReviewResponse
 from backend.app.models.transcript_memory import (
@@ -21,7 +23,7 @@ from backend.app.models.transcript_memory import (
     TranscriptMemorySearchResponse,
 )
 from backend.app.services.campaign_storage import CampaignStorage
-from backend.app.services.local_play import generate_local_play_response
+from backend.app.services.local_play import generate_local_play_response, mutate_play_transcript
 from backend.app.services.local_play_ui import load_local_play_ui
 from backend.app.services.session_review import generate_session_review
 from backend.app.services.transcript_memory import build_transcript_memory_index, search_transcript_memory
@@ -90,6 +92,21 @@ def get_play_history(
 ) -> list[PlayTranscriptEntry]:
     active_storage = _resolve_storage(session_id, campaign_id)
     return active_storage.load_play_history(limit=limit)
+
+
+@router.post(
+    "/history/mutate",
+    response_model=TranscriptMutationResponse,
+    operation_id="mutateLocalPlayHistory",
+    summary="Edit or delete a saved transcript entry, then rebuild memory or regenerate from that point.",
+)
+def mutate_play_history(request: TranscriptMutationRequest) -> TranscriptMutationResponse:
+    try:
+        return mutate_play_transcript(request, storage)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get(

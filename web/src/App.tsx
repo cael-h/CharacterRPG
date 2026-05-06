@@ -16,11 +16,13 @@ import {
   MessageSquareText,
   Network,
   PanelRight,
+  Pencil,
   RefreshCw,
   Search,
   Send,
   Server,
   Settings2,
+  Trash2,
   Wand2,
   X,
   type LucideIcon,
@@ -177,6 +179,26 @@ type RuntimeSettings = {
 };
 
 type Toast = { tone: 'info' | 'error' | 'success'; message: string } | null;
+
+type TranscriptMutationMode = 'memory' | 'regenerate';
+
+type TranscriptMutationResponse = {
+  campaign_id: string;
+  session_id: string;
+  mode: TranscriptMutationMode;
+  action: string;
+  turn: number;
+  transcript_entries: number;
+  memory_sections_indexed: number;
+  backup_path: string;
+  regenerated_reply?: string | null;
+};
+
+type TranscriptEditorState = {
+  index: number;
+  entry: TranscriptEntry;
+  content: string;
+};
 
 type MainTab = 'transcript' | 'recap' | 'timeline' | 'relationships' | 'locations';
 
@@ -336,7 +358,9 @@ function App() {
   const [isTranscriptScrolledBack, setIsTranscriptScrolledBack] = useState(false);
   const [transcriptJumpTurns, setTranscriptJumpTurns] = useState(readStoredJumpTurns);
   const [storyFontSize, setStoryFontSize] = useState(readStoredStoryFontSize);
+  const [editingTranscript, setEditingTranscript] = useState<TranscriptEditorState | null>(null);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
+  const longPressTimerRef = useRef<number | null>(null);
 
   const selectedProviderInfo = useMemo(
     () => providers.find((provider) => provider.provider === selectedProvider),
@@ -522,6 +546,28 @@ function App() {
     persistStoryFontSize(nextValue);
   };
 
+  const openTranscriptEditor = useCallback((entry: TranscriptEntry, index: number) => {
+    setEditingTranscript({ index, entry, content: entry.content });
+  }, []);
+
+  const clearTranscriptLongPress = useCallback(() => {
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  const startTranscriptLongPress = useCallback(
+    (entry: TranscriptEntry, index: number) => {
+      clearTranscriptLongPress();
+      longPressTimerRef.current = window.setTimeout(() => {
+        openTranscriptEditor(entry, index);
+        longPressTimerRef.current = null;
+      }, 560);
+    },
+    [clearTranscriptLongPress, openTranscriptEditor],
+  );
+
   const refreshCatalog = useCallback(async () => {
     const [providerPayload, campaignPayload, sessionPayload] = await Promise.all([
       api<ProvidersResponse>('/providers'),
@@ -587,6 +633,8 @@ function App() {
       setHistory([]);
     });
   }, [refreshActive]);
+
+  useEffect(() => () => clearTranscriptLongPress(), [clearTranscriptLongPress]);
 
   useEffect(() => {
     setActiveSearchIndex(0);
@@ -907,6 +955,47 @@ function App() {
     if (saved) setShowSettings(false);
   };
 
+  const mutateTranscriptEntry = async (mode: TranscriptMutationMode, deleteEntry: boolean) => {
+    if (!editingTranscript || !selectedCampaign) return;
+    const nextContent = editingTranscript.content.trim();
+    if (!deleteEntry && !nextContent) {
+      setToast({ tone: 'error', message: 'Transcript text cannot be empty. Use delete instead.' });
+      return;
+    }
+    setBusy(true);
+    setToast(null);
+    try {
+      const payload = await api<TranscriptMutationResponse>('/play/history/mutate', {
+        method: 'POST',
+        body: JSON.stringify({
+          campaign_id: selectedCampaign,
+          session_id: selectedSession || undefined,
+          entry_index: editingTranscript.index,
+          content: nextContent,
+          delete_entry: deleteEntry,
+          mode,
+          provider: selectedProvider || undefined,
+          model: selectedModel || undefined,
+          session_title: sessionTitle,
+          include_choices: includeChoices,
+        }),
+      });
+      setEditingTranscript(null);
+      await Promise.all([refreshCatalog(), refreshActive()]);
+      setToast({
+        tone: 'success',
+        message:
+          mode === 'regenerate' && payload.regenerated_reply
+            ? `Regenerated from turn ${payload.turn}.`
+            : `Transcript ${payload.action.replaceAll('_', ' ')}; memory sections: ${payload.memory_sections_indexed}.`,
+      });
+    } catch (error) {
+      setToast({ tone: 'error', message: error instanceof Error ? error.message : String(error) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <main className={`app-shell ${isSetupMode ? 'setup-mode' : 'play-mode'}`} style={appShellStyle}>
       {(showSidebar || showInspector) && (
@@ -1045,7 +1134,7 @@ function App() {
               ) : (
                 setupConversation.map((message, index) => (
                   <article className={`bubble ${message.role}`} key={`${message.role}:${index}`}>
-                    <span>{message.role === 'user' ? 'You' : 'Guide'}</span>
+                    <span className="bubble-label">{message.role === 'user' ? 'You' : 'Guide'}</span>
                     <p>{message.content}</p>
                   </article>
                 ))
@@ -1202,8 +1291,34 @@ function App() {
                           data-entry-index={index}
                           data-turn={entry.turn}
                           key={`${entry.turn}:${entry.role}:${index}`}
+                          onContextMenu={(event) => {
+                            event.preventDefault();
+                            openTranscriptEditor(entry, index);
+                          }}
+                          onPointerCancel={clearTranscriptLongPress}
+                          onPointerDown={() => startTranscriptLongPress(entry, index)}
+                          onPointerLeave={clearTranscriptLongPress}
+                          onPointerMove={clearTranscriptLongPress}
+                          onPointerUp={clearTranscriptLongPress}
                         >
-                          <span>{entry.role === 'user' ? `Player / Turn ${entry.turn}` : `GM / Turn ${entry.turn}`}</span>
+                          <div className="bubble-header">
+                            <span className="bubble-label">
+                              {entry.role === 'user' ? `Player / Turn ${entry.turn}` : `GM / Turn ${entry.turn}`}
+                            </span>
+                            <button
+                              aria-label={`Edit ${entry.role} entry for turn ${entry.turn}`}
+                              className="bubble-edit-button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openTranscriptEditor(entry, index);
+                              }}
+                              onPointerDown={(event) => event.stopPropagation()}
+                              title="Edit transcript entry"
+                              type="button"
+                            >
+                              <Pencil size={14} />
+                            </button>
+                          </div>
                           <p>{entry.content}</p>
                         </article>
                       ))
@@ -1667,6 +1782,92 @@ function App() {
                   <button disabled={busy || !selectedCampaign} onClick={handleSaveSettingsAndClose} type="button">
                     <CheckCircle2 size={17} />
                     <span>Save Settings</span>
+                  </button>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingTranscript && (
+        <div className="modal-backdrop" onClick={() => setEditingTranscript(null)} role="presentation">
+          <div
+            className="modal-content transcript-edit-modal"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+          >
+            <header className="modal-header">
+              <h2>{editingTranscript.entry.role === 'user' ? 'Edit Player Prompt' : 'Edit GM Response'}</h2>
+              <button
+                className="icon-button"
+                onClick={() => setEditingTranscript(null)}
+                type="button"
+                aria-label="Close"
+              >
+                <X size={20} />
+              </button>
+            </header>
+
+            <div className="modal-body">
+              <section className="panel">
+                <div className="section-title">
+                  <Pencil size={16} />
+                  <span>Turn {editingTranscript.entry.turn}</span>
+                </div>
+                <label className="field">
+                  <span>{editingTranscript.entry.role === 'user' ? 'Player prompt' : 'GM response'}</span>
+                  <textarea
+                    value={editingTranscript.content}
+                    onChange={(event) =>
+                      setEditingTranscript((current) =>
+                        current ? { ...current, content: event.target.value } : current,
+                      )
+                    }
+                    rows={8}
+                  />
+                </label>
+                <p className="provider-note">
+                  {editingTranscript.entry.role === 'user'
+                    ? 'Saving updates the transcript and rebuilds memory. Regenerating saves this player prompt, discards later transcript entries, then asks the model to continue from here.'
+                    : 'Saving updates the transcript and rebuilds memory. Regenerating discards this GM response and later transcript entries, then asks the model to answer the previous player prompt again.'}
+                </p>
+                <div className="editor-actions">
+                  <button
+                    className="secondary-button"
+                    disabled={busy}
+                    onClick={() => mutateTranscriptEntry('memory', false)}
+                    type="button"
+                  >
+                    <CheckCircle2 size={16} />
+                    <span>Save + Update Memory</span>
+                  </button>
+                  <button
+                    disabled={busy || !selectedCampaign}
+                    onClick={() => mutateTranscriptEntry('regenerate', false)}
+                    type="button"
+                  >
+                    <RefreshCw size={16} />
+                    <span>{editingTranscript.entry.role === 'user' ? 'Save + Regenerate' : 'Regenerate Response'}</span>
+                  </button>
+                  <button
+                    className="danger-button"
+                    disabled={busy}
+                    onClick={() => mutateTranscriptEntry('memory', true)}
+                    type="button"
+                  >
+                    <Trash2 size={16} />
+                    <span>Delete + Update Memory</span>
+                  </button>
+                  <button
+                    className="danger-button"
+                    disabled={busy || !selectedCampaign}
+                    onClick={() => mutateTranscriptEntry('regenerate', true)}
+                    type="button"
+                  >
+                    <RefreshCw size={16} />
+                    <span>{editingTranscript.entry.role === 'user' ? 'Delete + Trim Future' : 'Delete + Regenerate'}</span>
                   </button>
                 </div>
               </section>

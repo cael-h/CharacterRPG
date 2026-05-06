@@ -366,6 +366,10 @@ def test_runtime_settings_are_added_to_runtime_instructions() -> None:
     assert "Keep consequences intimate and avoid mechanics notes." in instructions
     assert "STORY DIRECTOR BRIEF" in instructions
     assert "Story momentum does not require factions" in instructions
+    assert "Describe observable action" in instructions
+    assert "Do not narrate the player character's thoughts" in instructions
+    assert "Every implied secret should have a specific answer" in instructions
+    assert "Use `npc_memory_notes` for unrevealed NPC knowledge" in instructions
 
 
 def test_story_director_rotates_to_quiet_threads() -> None:
@@ -476,6 +480,206 @@ def test_structured_play_response_updates_saved_bundle(tmp_path: Path) -> None:
     assert saved.story_threads[0].last_advanced_turn == 1
     assert saved.story_threads[0].next_beat == "Show what makes the quay dangerous."
     assert any("Mira trusts the PC" in note for note in saved.world_state.notes)
+
+
+def test_transcript_mutation_can_edit_and_reindex_memory() -> None:
+    bootstrap = client.post(
+        "/campaign/bootstrap",
+        json={
+            "story_name": "Transcript Edit Campaign",
+            "setting": "A rainlit dock district",
+            "genre_vibe": "Noir fantasy",
+            "player_character": {
+                "name": "Liora Vale",
+                "concept": "An oath-broker tracking a missing courier.",
+            },
+        },
+    )
+    campaign_id = bootstrap.json()["campaign_id"]
+    client.post(
+        "/play/respond",
+        json={
+            "campaign_id": campaign_id,
+            "session_id": "main",
+            "user_message": "I ask Mira what she saw.",
+            "provider": "mock",
+        },
+    )
+
+    mutation = client.post(
+        "/play/history/mutate",
+        json={
+            "campaign_id": campaign_id,
+            "session_id": "main",
+            "entry_index": 0,
+            "content": "I ask Mira exactly what she saw.",
+            "mode": "memory",
+        },
+    )
+    history = client.get(
+        "/play/history",
+        params={"campaign_id": campaign_id, "session_id": "main", "limit": 20},
+    ).json()
+
+    assert mutation.status_code == 200
+    assert mutation.json()["action"] == "edited_and_reindexed"
+    assert mutation.json()["memory_sections_indexed"] >= 1
+    assert history[0]["content"] == "I ask Mira exactly what she saw."
+
+
+def test_transcript_mutation_regenerates_from_edited_prompt() -> None:
+    bootstrap = client.post(
+        "/campaign/bootstrap",
+        json={
+            "story_name": "Transcript Regenerate Campaign",
+            "setting": "A rainlit dock district",
+            "genre_vibe": "Noir fantasy",
+            "player_character": {
+                "name": "Liora Vale",
+                "concept": "An oath-broker tracking a missing courier.",
+            },
+        },
+    )
+    campaign_id = bootstrap.json()["campaign_id"]
+    for prompt in ("I ask Mira what she saw.", "I follow the quay lead."):
+        client.post(
+            "/play/respond",
+            json={
+                "campaign_id": campaign_id,
+                "session_id": "main",
+                "user_message": prompt,
+                "provider": "mock",
+            },
+        )
+
+    mutation = client.post(
+        "/play/history/mutate",
+        json={
+            "campaign_id": campaign_id,
+            "session_id": "main",
+            "entry_index": 0,
+            "content": "I ask Mira what she heard.",
+            "mode": "regenerate",
+            "provider": "mock",
+        },
+    )
+    history = client.get(
+        "/play/history",
+        params={"campaign_id": campaign_id, "session_id": "main", "limit": 20},
+    ).json()
+    bundle = client.get("/campaign/bundle", params={"campaign_id": campaign_id, "session_id": "main"}).json()
+
+    assert mutation.status_code == 200
+    assert mutation.json()["action"] == "edited_and_regenerated"
+    assert mutation.json()["regenerated_reply"]
+    assert len(history) == 2
+    assert history[0]["content"] == "I ask Mira what she heard."
+    assert history[0]["turn"] == 1
+    assert history[1]["turn"] == 1
+    assert bundle["world_state"]["turn"] == 1
+
+
+def test_transcript_mutation_regenerates_deleted_assistant_from_previous_prompt() -> None:
+    bootstrap = client.post(
+        "/campaign/bootstrap",
+        json={
+            "story_name": "Transcript Delete Response Campaign",
+            "setting": "A rainlit dock district",
+            "genre_vibe": "Noir fantasy",
+            "player_character": {
+                "name": "Liora Vale",
+                "concept": "An oath-broker tracking a missing courier.",
+            },
+        },
+    )
+    campaign_id = bootstrap.json()["campaign_id"]
+    for prompt in ("I ask Mira what she saw.", "I follow the quay lead."):
+        client.post(
+            "/play/respond",
+            json={
+                "campaign_id": campaign_id,
+                "session_id": "main",
+                "user_message": prompt,
+                "provider": "mock",
+            },
+        )
+
+    mutation = client.post(
+        "/play/history/mutate",
+        json={
+            "campaign_id": campaign_id,
+            "session_id": "main",
+            "entry_index": 1,
+            "delete_entry": True,
+            "mode": "regenerate",
+            "provider": "mock",
+        },
+    )
+    history = client.get(
+        "/play/history",
+        params={"campaign_id": campaign_id, "session_id": "main", "limit": 20},
+    ).json()
+
+    assert mutation.status_code == 200
+    assert mutation.json()["action"] == "deleted_and_regenerated"
+    assert len(history) == 2
+    assert history[0]["content"] == "I ask Mira what she saw."
+    assert "I follow the quay lead." not in {entry["content"] for entry in history}
+
+
+def test_transcript_mutation_regenerate_failure_restores_history(monkeypatch: pytest.MonkeyPatch) -> None:
+    bootstrap = client.post(
+        "/campaign/bootstrap",
+        json={
+            "story_name": "Transcript Regenerate Rollback Campaign",
+            "setting": "A rainlit dock district",
+            "genre_vibe": "Noir fantasy",
+            "player_character": {
+                "name": "Liora Vale",
+                "concept": "An oath-broker tracking a missing courier.",
+            },
+        },
+    )
+    campaign_id = bootstrap.json()["campaign_id"]
+    client.post(
+        "/play/respond",
+        json={
+            "campaign_id": campaign_id,
+            "session_id": "main",
+            "user_message": "I ask Mira what she saw.",
+            "provider": "mock",
+        },
+    )
+    original_history = client.get(
+        "/play/history",
+        params={"campaign_id": campaign_id, "session_id": "main", "limit": 20},
+    ).json()
+
+    import backend.app.services.local_play as local_play
+
+    def failing_generate_model_text(_request: object) -> ModelResponse:
+        raise local_play.ModelProviderError("simulated provider failure")
+
+    monkeypatch.setattr(local_play, "generate_model_text", failing_generate_model_text)
+    mutation = client.post(
+        "/play/history/mutate",
+        json={
+            "campaign_id": campaign_id,
+            "session_id": "main",
+            "entry_index": 0,
+            "content": "I ask Mira what she heard.",
+            "mode": "regenerate",
+            "provider": "venice",
+        },
+    )
+    restored_history = client.get(
+        "/play/history",
+        params={"campaign_id": campaign_id, "session_id": "main", "limit": 20},
+    ).json()
+
+    assert mutation.status_code == 503
+    assert "simulated provider failure" in mutation.json()["detail"]
+    assert restored_history == original_history
 
 
 def test_plain_model_response_gets_structured_repair(

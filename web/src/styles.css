@@ -544,13 +544,49 @@ button:disabled {
   box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.22), 0 4px 14px rgba(0, 0, 0, 0.24);
 }
 
-.bubble span {
-  display: block;
+.bubble-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   margin-bottom: 6px;
+}
+
+.bubble-label {
+  display: block;
   color: var(--accent);
   font-size: 13px;
   font-weight: 800;
   line-height: 1.2;
+}
+
+.bubble-edit-button {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(9, 6, 20, 0.54);
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0.72;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.bubble:hover .bubble-edit-button,
+.bubble-edit-button:focus-visible {
+  color: var(--ink);
+  opacity: 1;
+}
+
+.bubble-edit-button:hover {
+  background: var(--surface-muted);
 }
 
 .bubble[data-turn] {
@@ -793,6 +829,43 @@ textarea:focus {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
   margin-top: 16px;
+}
+
+.editor-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.editor-actions > button,
+.danger-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.editor-actions > button:not(.secondary-button):not(.danger-button) {
+  background: var(--primary);
+  color: #fff;
+}
+
+.danger-button {
+  border: 1px solid rgba(251, 113, 133, 0.44);
+  background: rgba(136, 19, 55, 0.18);
+  color: #fda4af;
+}
+
+.danger-button:hover:not(:disabled) {
+  background: rgba(136, 19, 55, 0.28);
 }
 
 .thread-list,
@@ -1091,6 +1164,10 @@ textarea:focus {
   }
 
   .button-row {
+    grid-template-columns: 1fr;
+  }
+
+  .editor-actions {
     grid-template-columns: 1fr;
   }
 
