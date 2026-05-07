@@ -606,6 +606,42 @@ button:disabled {
   white-space: pre-wrap;
 }
 
+.bubble-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  color: var(--muted);
+}
+
+.variant-control {
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(9, 6, 20, 0.48);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.variant-control:hover:not(:disabled),
+.variant-control:focus-visible {
+  background: var(--surface-muted);
+  color: var(--ink);
+}
+
+.variant-counter {
+  min-width: 34px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+}
+
 .empty-state {
   display: flex;
   flex: 1;

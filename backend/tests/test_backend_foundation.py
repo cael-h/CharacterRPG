@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 
@@ -211,7 +212,7 @@ def test_campaign_bootstrap_writes_campaign_bundle() -> None:
 
     assert response.status_code == 200
     assert payload["campaign_id"] == "ash-market-signals"
-    assert len(payload["files_written"]) == 10
+    assert len(payload["files_written"]) == 11
 
     bundle_response = client.get("/campaign/bundle", params={"campaign_id": "ash-market-signals"})
     bundle = bundle_response.json()
@@ -313,6 +314,8 @@ def test_local_play_mock_provider_persists_history(tmp_path: Path) -> None:
     assert saved.world_state.turn == 1
     assert saved.story_threads[0].last_advanced_turn == 1
     assert len(storage.load_play_history()) == 2
+    assert storage.load_turn_snapshot(0) is not None
+    assert storage.load_turn_snapshot(1) is not None
 
 
 def test_local_play_uses_saved_runtime_settings(tmp_path: Path) -> None:
@@ -680,6 +683,136 @@ def test_transcript_mutation_regenerate_failure_restores_history(monkeypatch: py
     assert mutation.status_code == 503
     assert "simulated provider failure" in mutation.json()["detail"]
     assert restored_history == original_history
+
+
+def test_transcript_regeneration_keeps_switchable_response_variants(monkeypatch: pytest.MonkeyPatch) -> None:
+    bootstrap = client.post(
+        "/campaign/bootstrap",
+        json={
+            "story_name": "Transcript Variant Campaign",
+            "setting": "A rainlit dock district",
+            "genre_vibe": "Noir fantasy",
+            "player_character": {
+                "name": "Liora Vale",
+                "concept": "An oath-broker tracking a missing courier.",
+            },
+        },
+    )
+    campaign_id = bootstrap.json()["campaign_id"]
+    client.post(
+        "/play/respond",
+        json={
+            "campaign_id": campaign_id,
+            "session_id": "main",
+            "user_message": "I ask Mira what she saw.",
+            "provider": "mock",
+        },
+    )
+    original_history = client.get(
+        "/play/history",
+        params={"campaign_id": campaign_id, "session_id": "main", "limit": 20},
+    ).json()
+    original_scene = client.get(
+        "/campaign/bundle",
+        params={"campaign_id": campaign_id, "session_id": "main"},
+    ).json()["world_state"]["current_scene"]
+
+    import backend.app.services.local_play as local_play
+
+    def variant_generate_model_text(_request: object) -> ModelResponse:
+        return ModelResponse(
+            text=json.dumps(
+                {
+                    "reply": "_Mira gives a colder answer and points to the locked boathouse._",
+                    "state_updates": {
+                        "current_scene": "Mira points Liora toward the locked boathouse.",
+                        "location": None,
+                        "time_of_day": None,
+                        "world_pressure": None,
+                        "pressure_clock": None,
+                        "notes_append": [],
+                    },
+                    "timeline_entries": ["Mira pointed toward the locked boathouse."],
+                    "recap_delta": "The boathouse becomes the next lead.",
+                    "quest_updates": [],
+                    "story_thread_updates": [],
+                    "event_queue_updates": {"add": [], "remove": []},
+                    "npc_memory_notes": [],
+                }
+            ),
+            provider="venice",
+            model="variant-model",
+        )
+
+    monkeypatch.setattr(local_play, "generate_model_text", variant_generate_model_text)
+    mutation = client.post(
+        "/play/history/mutate",
+        json={
+            "campaign_id": campaign_id,
+            "session_id": "main",
+            "entry_index": 1,
+            "content": original_history[1]["content"],
+            "mode": "regenerate",
+            "provider": "venice",
+            "model": "variant-model",
+        },
+    )
+    regenerated_history = client.get(
+        "/play/history",
+        params={"campaign_id": campaign_id, "session_id": "main", "limit": 20},
+    ).json()
+    regenerated_bundle = client.get(
+        "/campaign/bundle",
+        params={"campaign_id": campaign_id, "session_id": "main"},
+    ).json()
+
+    assert mutation.status_code == 200
+    assert regenerated_history[1]["variant_index"] == 2
+    assert regenerated_history[1]["variant_count"] == 2
+    assert "locked boathouse" in regenerated_history[1]["content"]
+    assert regenerated_bundle["world_state"]["current_scene"] == "Mira points Liora toward the locked boathouse."
+
+    previous_variant = client.post(
+        "/play/history/variant",
+        json={
+            "campaign_id": campaign_id,
+            "session_id": "main",
+            "entry_index": 1,
+            "direction": "previous",
+        },
+    )
+    previous_history = client.get(
+        "/play/history",
+        params={"campaign_id": campaign_id, "session_id": "main", "limit": 20},
+    ).json()
+    previous_bundle = client.get(
+        "/campaign/bundle",
+        params={"campaign_id": campaign_id, "session_id": "main"},
+    ).json()
+
+    assert previous_variant.status_code == 200
+    assert previous_variant.json()["variant_index"] == 1
+    assert previous_history[1]["content"] == original_history[1]["content"]
+    assert previous_history[1]["variant_count"] == 2
+    assert previous_bundle["world_state"]["current_scene"] == original_scene
+
+    next_variant = client.post(
+        "/play/history/variant",
+        json={
+            "campaign_id": campaign_id,
+            "session_id": "main",
+            "entry_index": 1,
+            "direction": "next",
+        },
+    )
+    next_history = client.get(
+        "/play/history",
+        params={"campaign_id": campaign_id, "session_id": "main", "limit": 20},
+    ).json()
+
+    assert next_variant.status_code == 200
+    assert next_variant.json()["variant_index"] == 2
+    assert "locked boathouse" in next_history[1]["content"]
 
 
 def test_plain_model_response_gets_structured_repair(

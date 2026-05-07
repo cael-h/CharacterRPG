@@ -10,6 +10,8 @@ from backend.app.models.play import (
     PlayCampaignSummary,
     PlaySessionSummary,
     PlayTranscriptEntry,
+    ResponseVariantSwitchRequest,
+    ResponseVariantSwitchResponse,
     RuntimeSettings,
     RuntimeSettingsRequest,
     TranscriptMutationRequest,
@@ -23,7 +25,7 @@ from backend.app.models.transcript_memory import (
     TranscriptMemorySearchResponse,
 )
 from backend.app.services.campaign_storage import CampaignStorage
-from backend.app.services.local_play import generate_local_play_response, mutate_play_transcript
+from backend.app.services.local_play import generate_local_play_response, mutate_play_transcript, switch_response_variant
 from backend.app.services.local_play_ui import load_local_play_ui
 from backend.app.services.session_review import generate_session_review
 from backend.app.services.transcript_memory import build_transcript_memory_index, search_transcript_memory
@@ -103,6 +105,21 @@ def get_play_history(
 def mutate_play_history(request: TranscriptMutationRequest) -> TranscriptMutationResponse:
     try:
         return mutate_play_transcript(request, storage)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post(
+    "/history/variant",
+    response_model=ResponseVariantSwitchResponse,
+    operation_id="switchLocalPlayResponseVariant",
+    summary="Switch the active GM response variant for a transcript turn.",
+)
+def switch_play_response_variant(request: ResponseVariantSwitchRequest) -> ResponseVariantSwitchResponse:
+    try:
+        return switch_response_variant(request, storage)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:

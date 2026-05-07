@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -10,6 +10,10 @@ class PlayTranscriptEntry(BaseModel):
     content: str
     turn: int = Field(ge=1)
     recorded_at: str
+    variant_group_id: str | None = None
+    variant_id: str | None = None
+    variant_index: int | None = Field(default=None, ge=1)
+    variant_count: int = Field(default=1, ge=1)
 
 
 class LocalPlayRequest(BaseModel):
@@ -42,6 +46,15 @@ class TranscriptMutationRequest(BaseModel):
     provider_base_url: str | None = None
     session_title: str | None = None
     include_choices: bool = False
+
+
+class ResponseVariantSwitchRequest(BaseModel):
+    campaign_id: str | None = None
+    session_id: str | None = None
+    entry_index: int = Field(ge=0)
+    direction: Literal["previous", "next"] | None = None
+    variant_id: str | None = None
+    session_title: str | None = None
 
 
 class RuntimeSettings(BaseModel):
@@ -123,6 +136,40 @@ class TranscriptMutationResponse(BaseModel):
     memory_sections_indexed: int = Field(ge=0)
     backup_path: str
     regenerated_reply: str | None = None
+
+
+class AssistantResponseVariant(BaseModel):
+    variant_id: str
+    content: str
+    recorded_at: str
+    provider: str | None = None
+    model: str | None = None
+    source: Literal["original", "regenerated", "edited"] = "regenerated"
+    bundle_snapshot: dict[str, Any] | None = None
+
+
+class AssistantResponseVariantGroup(BaseModel):
+    group_id: str
+    turn: int = Field(ge=1)
+    active_variant_id: str
+    variants: list[AssistantResponseVariant] = Field(default_factory=list)
+
+
+class AssistantResponseVariants(BaseModel):
+    groups: dict[str, AssistantResponseVariantGroup] = Field(default_factory=dict)
+
+
+class ResponseVariantSwitchResponse(BaseModel):
+    campaign_id: str
+    session_id: str
+    turn: int = Field(ge=1)
+    entry_index: int = Field(ge=0)
+    variant_group_id: str
+    variant_id: str
+    variant_index: int = Field(ge=1)
+    variant_count: int = Field(ge=1)
+    content: str
+    memory_sections_indexed: int = Field(ge=0)
 
 
 class PlayCampaignSummary(BaseModel):

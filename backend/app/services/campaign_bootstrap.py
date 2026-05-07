@@ -743,6 +743,7 @@ def create_campaign_bootstrap(
     bundle = build_campaign_bundle(request)
     campaign_storage = storage.for_campaign(bundle.world_state.campaign_id)
     files_written = campaign_storage.save_bundle(bundle)
+    files_written.append(str(campaign_storage.save_turn_snapshot(bundle.world_state.turn, bundle)))
     campaign_storage.touch_campaign_summary(title=bundle.scenario.title)
     summary = CampaignBootstrapSummary(
         title=bundle.scenario.title,

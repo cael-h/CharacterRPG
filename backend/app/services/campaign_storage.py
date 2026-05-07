@@ -13,6 +13,7 @@ from backend.app.models.bootstrap import CampaignBundle
 from backend.app.models.character import CharacterProfile
 from backend.app.models.faction import FactionState
 from backend.app.models.play import (
+    AssistantResponseVariants,
     PlayCampaignSummary,
     PlaySessionSummary,
     PlayTranscriptEntry,
@@ -111,6 +112,14 @@ class CampaignStorage:
     @property
     def transcript_memory_path(self) -> Path:
         return self.base_dir / 'transcript_memory.json'
+
+    @property
+    def response_variants_path(self) -> Path:
+        return self.base_dir / 'response_variants.json'
+
+    @property
+    def turn_snapshots_dir(self) -> Path:
+        return self.base_dir / 'turn_snapshots'
 
     @property
     def runtime_settings_path(self) -> Path:
@@ -292,6 +301,73 @@ class CampaignStorage:
             if not section.campaign_id:
                 section.campaign_id = campaign_id
         return sections
+
+    def save_response_variants(self, response_variants: AssistantResponseVariants) -> Path:
+        self.response_variants_path.write_text(
+            json.dumps(model_dump(response_variants), ensure_ascii=True, indent=2) + '\n',
+            encoding='utf-8',
+        )
+        return self.response_variants_path
+
+    def load_response_variants(self) -> AssistantResponseVariants:
+        if not self.response_variants_path.exists():
+            return AssistantResponseVariants()
+        payload = json.loads(self.response_variants_path.read_text(encoding='utf-8'))
+        return model_validate(AssistantResponseVariants, payload)
+
+    def _turn_snapshot_path(self, turn: int) -> Path:
+        return self.turn_snapshots_dir / f'turn-{turn:06d}.json'
+
+    def save_turn_snapshot(self, turn: int, bundle: CampaignBundle) -> Path:
+        if turn < 0:
+            raise ValueError('turn must be non-negative.')
+        self.turn_snapshots_dir.mkdir(parents=True, exist_ok=True)
+        path = self._turn_snapshot_path(turn)
+        path.write_text(
+            json.dumps(model_dump(bundle), ensure_ascii=True, indent=2) + '\n',
+            encoding='utf-8',
+        )
+        return path
+
+    def load_turn_snapshot(self, turn: int) -> CampaignBundle | None:
+        path = self._turn_snapshot_path(turn)
+        if not path.exists():
+            return None
+        payload = json.loads(path.read_text(encoding='utf-8'))
+        bundle = model_validate(CampaignBundle, payload)
+        if self.current_campaign_id != 'root':
+            bundle.world_state.campaign_id = self.current_campaign_id
+        return bundle
+
+    def delete_turn_snapshots_after(self, turn: int) -> None:
+        if not self.turn_snapshots_dir.exists():
+            return
+        for path in self.turn_snapshots_dir.glob('turn-*.json'):
+            match = re.search(r'turn-(\d+)\.json$', path.name)
+            if match and int(match.group(1)) > turn:
+                path.unlink()
+
+    def copy_turn_snapshots_from(self, source: 'CampaignStorage', *, max_turn: int | None = None) -> None:
+        if not source.turn_snapshots_dir.exists():
+            return
+        self.turn_snapshots_dir.mkdir(parents=True, exist_ok=True)
+        for path in source.turn_snapshots_dir.glob('turn-*.json'):
+            match = re.search(r'turn-(\d+)\.json$', path.name)
+            if max_turn is not None and match and int(match.group(1)) > max_turn:
+                continue
+            shutil.copy2(path, self.turn_snapshots_dir / path.name)
+
+    def copy_response_variants_from(self, source: 'CampaignStorage', *, max_turn: int | None = None) -> None:
+        source_variants = source.load_response_variants()
+        if not source_variants.groups:
+            return
+        groups = {
+            group_id: group
+            for group_id, group in source_variants.groups.items()
+            if max_turn is None or group.turn <= max_turn
+        }
+        if groups:
+            self.save_response_variants(AssistantResponseVariants(groups=groups))
 
     def save_runtime_settings(self, runtime_settings: RuntimeSettings) -> Path:
         self.runtime_settings_path.write_text(
@@ -608,7 +684,11 @@ class CampaignStorage:
             bundle.world_state.campaign_id = resolved_campaign_id
         if effective_fork_turn is not None:
             history = [entry for entry in history if entry.turn <= effective_fork_turn]
-            bundle.world_state.turn = min(bundle.world_state.turn, effective_fork_turn)
+            snapshot = source.load_turn_snapshot(effective_fork_turn)
+            if snapshot is not None:
+                bundle = snapshot
+            else:
+                bundle.world_state.turn = min(bundle.world_state.turn, effective_fork_turn)
             branch_note = (
                 f'Session fork created from {parent_session_id or source.base_dir.name} at turn {effective_fork_turn}.'
             )
@@ -618,6 +698,8 @@ class CampaignStorage:
 
         session_storage.save_bundle(bundle)
         session_storage.save_play_history(history)
+        session_storage.copy_turn_snapshots_from(source, max_turn=effective_fork_turn)
+        session_storage.copy_response_variants_from(source, max_turn=effective_fork_turn)
 
         now = datetime.now(UTC).isoformat()
         summary = PlaySessionSummary(
@@ -679,6 +761,7 @@ class CampaignStorage:
             'recap.md',
             'play_history.jsonl',
             'transcript_memory.json',
+            'response_variants.json',
             'runtime_settings.json',
             'campaign.json',
             'session.json',
@@ -687,4 +770,6 @@ class CampaignStorage:
             source = self.base_dir / name
             if source.exists():
                 shutil.copy2(source, target / name)
+        if self.turn_snapshots_dir.exists():
+            shutil.copytree(self.turn_snapshots_dir, target / self.turn_snapshots_dir.name)
         return target

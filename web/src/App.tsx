@@ -6,6 +6,8 @@ import {
   Boxes,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
   Clock3,
   FileText,
@@ -63,6 +65,10 @@ type TranscriptEntry = {
   content: string;
   turn: number;
   recorded_at: string;
+  variant_group_id?: string | null;
+  variant_id?: string | null;
+  variant_index?: number | null;
+  variant_count?: number | null;
 };
 
 type CampaignBundle = {
@@ -192,6 +198,19 @@ type TranscriptMutationResponse = {
   memory_sections_indexed: number;
   backup_path: string;
   regenerated_reply?: string | null;
+};
+
+type ResponseVariantSwitchResponse = {
+  campaign_id: string;
+  session_id: string;
+  turn: number;
+  entry_index: number;
+  variant_group_id: string;
+  variant_id: string;
+  variant_index: number;
+  variant_count: number;
+  content: string;
+  memory_sections_indexed: number;
 };
 
 type TranscriptEditorState = {
@@ -996,6 +1015,33 @@ function App() {
     }
   };
 
+  const switchResponseVariant = async (entryIndex: number, direction: 'previous' | 'next') => {
+    if (!selectedCampaign) return;
+    setBusy(true);
+    setToast(null);
+    try {
+      const payload = await api<ResponseVariantSwitchResponse>('/play/history/variant', {
+        method: 'POST',
+        body: JSON.stringify({
+          campaign_id: selectedCampaign,
+          session_id: selectedSession || undefined,
+          entry_index: entryIndex,
+          direction,
+          session_title: sessionTitle,
+        }),
+      });
+      await Promise.all([refreshCatalog(), refreshActive()]);
+      setToast({
+        tone: 'success',
+        message: `Response variant ${payload.variant_index}/${payload.variant_count} active.`,
+      });
+    } catch (error) {
+      setToast({ tone: 'error', message: error instanceof Error ? error.message : String(error) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <main className={`app-shell ${isSetupMode ? 'setup-mode' : 'play-mode'}`} style={appShellStyle}>
       {(showSidebar || showInspector) && (
@@ -1320,6 +1366,41 @@ function App() {
                             </button>
                           </div>
                           <p>{entry.content}</p>
+                          {entry.role === 'assistant' && (entry.variant_count || 1) > 1 && (
+                            <div className="bubble-footer" aria-label={`Response variant ${entry.variant_index || 1} of ${entry.variant_count}`}>
+                              <button
+                                aria-label="Previous response variant"
+                                className="variant-control"
+                                disabled={busy}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  switchResponseVariant(index, 'previous');
+                                }}
+                                onPointerDown={(event) => event.stopPropagation()}
+                                title="Previous response"
+                                type="button"
+                              >
+                                <ChevronLeft size={15} />
+                              </button>
+                              <span className="variant-counter">
+                                {entry.variant_index || 1}/{entry.variant_count}
+                              </span>
+                              <button
+                                aria-label="Next response variant"
+                                className="variant-control"
+                                disabled={busy}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  switchResponseVariant(index, 'next');
+                                }}
+                                onPointerDown={(event) => event.stopPropagation()}
+                                title="Next response"
+                                type="button"
+                              >
+                                <ChevronRight size={15} />
+                              </button>
+                            </div>
+                          )}
                         </article>
                       ))
                     )}

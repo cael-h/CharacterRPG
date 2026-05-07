@@ -5,7 +5,8 @@ import re
 import shutil
 from datetime import UTC, datetime
 from functools import lru_cache
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
+from uuid import uuid4
 
 import yaml
 
@@ -13,12 +14,16 @@ from backend.app.config import PROJECT_ROOT, settings
 from backend.app.model_utils import model_dump, model_validate
 from backend.app.models.bootstrap import CampaignBundle
 from backend.app.models.play import (
+    AssistantResponseVariant,
+    AssistantResponseVariantGroup,
     LocalPlayRequest,
     LocalPlayResponse,
     PlayQuestUpdate,
     PlaySessionSummary,
     PlayStoryThreadUpdate,
     PlayTranscriptEntry,
+    ResponseVariantSwitchRequest,
+    ResponseVariantSwitchResponse,
     RuntimeSettings,
     StructuredPlayTurn,
     TranscriptMutationRequest,
@@ -748,12 +753,198 @@ def _touch_transcript_container(
     return None
 
 
-def _rewind_bundle_to_history(active_storage: CampaignStorage, history: list[PlayTranscriptEntry]) -> None:
+def _restore_bundle_to_history(active_storage: CampaignStorage, history: list[PlayTranscriptEntry]) -> None:
+    target_turn = _max_history_turn(history)
+    snapshot = active_storage.load_turn_snapshot(target_turn)
+    if snapshot is not None:
+        active_storage.save_bundle(snapshot)
+        active_storage.delete_turn_snapshots_after(target_turn)
+        return
     if not active_storage.has_bundle():
         return
     bundle = active_storage.load_bundle()
-    bundle.world_state.turn = _max_history_turn(history)
+    bundle.world_state.turn = target_turn
     active_storage.save_bundle(bundle)
+    active_storage.save_turn_snapshot(target_turn, bundle)
+    active_storage.delete_turn_snapshots_after(target_turn)
+
+
+def _variant_group_id(turn: int) -> str:
+    return f"turn-{turn}"
+
+
+def _active_variant_index(group: AssistantResponseVariantGroup) -> int:
+    for index, variant in enumerate(group.variants, start=1):
+        if variant.variant_id == group.active_variant_id:
+            return index
+    return 1
+
+
+def _active_variant(group: AssistantResponseVariantGroup) -> AssistantResponseVariant:
+    for variant in group.variants:
+        if variant.variant_id == group.active_variant_id:
+            return variant
+    if not group.variants:
+        raise ValueError("Response variant group is empty.")
+    return group.variants[0]
+
+
+def _entry_with_variant_metadata(
+    entry: PlayTranscriptEntry,
+    group: AssistantResponseVariantGroup,
+) -> PlayTranscriptEntry:
+    active_variant = _active_variant(group)
+    payload = model_dump(entry)
+    payload["content"] = active_variant.content
+    payload["variant_group_id"] = group.group_id
+    payload["variant_id"] = active_variant.variant_id
+    payload["variant_index"] = _active_variant_index(group)
+    payload["variant_count"] = len(group.variants)
+    return model_validate(PlayTranscriptEntry, payload)
+
+
+def _snapshot_payload_for_turn(active_storage: CampaignStorage, turn: int) -> dict[str, Any] | None:
+    snapshot = active_storage.load_turn_snapshot(turn)
+    if snapshot is not None:
+        return model_dump(snapshot)
+    if not active_storage.has_bundle():
+        return None
+    bundle = active_storage.load_bundle()
+    if bundle.world_state.turn != turn:
+        return None
+    return model_dump(bundle)
+
+
+def _new_response_variant(
+    content: str,
+    *,
+    source: Literal["original", "regenerated", "edited"],
+    provider: str | None = None,
+    model: str | None = None,
+    bundle_snapshot: dict[str, Any] | None = None,
+) -> AssistantResponseVariant:
+    return AssistantResponseVariant(
+        variant_id=f"rv-{uuid4().hex}",
+        content=content,
+        recorded_at=datetime.now(UTC).isoformat(),
+        provider=provider,
+        model=model,
+        source=source,
+        bundle_snapshot=bundle_snapshot,
+    )
+
+
+def _seed_variant_group_from_entry(
+    active_storage: CampaignStorage,
+    entry: PlayTranscriptEntry,
+    *,
+    content: str,
+    source: Literal["original", "regenerated", "edited"],
+) -> AssistantResponseVariantGroup:
+    response_variants = active_storage.load_response_variants()
+    group_id = entry.variant_group_id or _variant_group_id(entry.turn)
+    group = response_variants.groups.get(group_id)
+    if group is None:
+        variant = _new_response_variant(
+            content,
+            source=source,
+            bundle_snapshot=_snapshot_payload_for_turn(active_storage, entry.turn),
+        )
+        group = AssistantResponseVariantGroup(
+            group_id=group_id,
+            turn=entry.turn,
+            active_variant_id=variant.variant_id,
+            variants=[variant],
+        )
+        response_variants.groups[group_id] = group
+        active_storage.save_response_variants(response_variants)
+        return group
+
+    active_id = entry.variant_id or group.active_variant_id
+    active_variant = next((variant for variant in group.variants if variant.variant_id == active_id), None)
+    if active_variant is None:
+        active_variant = _new_response_variant(
+            content,
+            source=source,
+            bundle_snapshot=_snapshot_payload_for_turn(active_storage, entry.turn),
+        )
+        group.variants.append(active_variant)
+    else:
+        active_variant.content = content
+        active_variant.source = source
+        snapshot = _snapshot_payload_for_turn(active_storage, entry.turn)
+        if snapshot is not None:
+            active_variant.bundle_snapshot = snapshot
+    group.active_variant_id = active_variant.variant_id
+    active_storage.save_response_variants(response_variants)
+    return group
+
+
+def _add_regenerated_variant(
+    active_storage: CampaignStorage,
+    group: AssistantResponseVariantGroup,
+    response: LocalPlayResponse,
+) -> AssistantResponseVariantGroup:
+    response_variants = active_storage.load_response_variants()
+    persisted_group = response_variants.groups.get(group.group_id, group)
+    variant = _new_response_variant(
+        response.reply,
+        source="regenerated",
+        provider=response.provider,
+        model=response.model,
+        bundle_snapshot=_snapshot_payload_for_turn(active_storage, response.turn),
+    )
+    persisted_group.turn = response.turn
+    persisted_group.variants.append(variant)
+    persisted_group.active_variant_id = variant.variant_id
+    response_variants.groups[persisted_group.group_id] = persisted_group
+    active_storage.save_response_variants(response_variants)
+    return persisted_group
+
+
+def _prune_response_variants_after_turn(
+    active_storage: CampaignStorage,
+    turn: int,
+    *,
+    keep_group_id: str | None = None,
+) -> None:
+    response_variants = active_storage.load_response_variants()
+    if not response_variants.groups:
+        return
+    response_variants.groups = {
+        group_id: group
+        for group_id, group in response_variants.groups.items()
+        if group.turn <= turn or group_id == keep_group_id
+    }
+    active_storage.save_response_variants(response_variants)
+
+
+def _prune_response_variants_to_history(
+    active_storage: CampaignStorage,
+    history: list[PlayTranscriptEntry],
+) -> None:
+    response_variants = active_storage.load_response_variants()
+    if not response_variants.groups:
+        return
+    assistant_group_ids = {
+        entry.variant_group_id or _variant_group_id(entry.turn)
+        for entry in history
+        if entry.role == "assistant"
+    }
+    response_variants.groups = {
+        group_id: group
+        for group_id, group in response_variants.groups.items()
+        if group_id in assistant_group_ids
+    }
+    active_storage.save_response_variants(response_variants)
+
+
+def _assistant_entry_index_for_turn(history: list[PlayTranscriptEntry], turn: int) -> int | None:
+    for index in range(len(history) - 1, -1, -1):
+        entry = history[index]
+        if entry.role == "assistant" and entry.turn == turn:
+            return index
+    return None
 
 
 def _find_regeneration_prompt_index(
@@ -808,6 +999,16 @@ def mutate_play_transcript(
 
     regenerated: LocalPlayResponse | None = None
     if request.mode == "regenerate":
+        variant_group: AssistantResponseVariantGroup | None = None
+        if original_entry.role == "assistant" and not request.delete_entry:
+            variant_source = "edited" if mutated_history[request.entry_index].content != original_entry.content else "original"
+            variant_group = _seed_variant_group_from_entry(
+                active_storage,
+                original_entry,
+                content=mutated_history[request.entry_index].content,
+                source=variant_source,
+            )
+
         prompt_index = _find_regeneration_prompt_index(
             history,
             original_index=request.entry_index,
@@ -817,7 +1018,8 @@ def mutate_play_transcript(
         if prompt_index is None:
             base_history = mutated_history[: request.entry_index]
             active_storage.save_play_history(base_history)
-            _rewind_bundle_to_history(active_storage, base_history)
+            _restore_bundle_to_history(active_storage, base_history)
+            _prune_response_variants_after_turn(active_storage, _max_history_turn(base_history))
             memory_sections = _rebuild_transcript_memory(active_storage, storage, session_summary)
             session_summary = _touch_transcript_container(active_storage, session_summary, request.session_title)
             campaign_id, session_id = _effective_mutation_identity(active_storage, session_summary)
@@ -836,7 +1038,12 @@ def mutate_play_transcript(
         prompt_entry = mutated_history[prompt_index]
         base_history = mutated_history[:prompt_index]
         active_storage.save_play_history(base_history)
-        _rewind_bundle_to_history(active_storage, base_history)
+        _restore_bundle_to_history(active_storage, base_history)
+        _prune_response_variants_after_turn(
+            active_storage,
+            _max_history_turn(base_history),
+            keep_group_id=variant_group.group_id if variant_group is not None else None,
+        )
         session_summary = _touch_transcript_container(active_storage, session_summary, request.session_title)
         try:
             regenerated = generate_local_play_response(
@@ -858,6 +1065,15 @@ def mutate_play_transcript(
             _restore_transcript_storage(active_storage, backup_path)
             raise
         refreshed_history = active_storage.load_play_history()
+        if variant_group is not None:
+            variant_group = _add_regenerated_variant(active_storage, variant_group, regenerated)
+            assistant_index = _assistant_entry_index_for_turn(refreshed_history, regenerated.turn)
+            if assistant_index is not None:
+                refreshed_history[assistant_index] = _entry_with_variant_metadata(
+                    refreshed_history[assistant_index],
+                    variant_group,
+                )
+                active_storage.save_play_history(refreshed_history)
         memory_sections = len(active_storage.load_transcript_memory())
         session_summary = active_storage.load_session_summary() if request.session_id else session_summary
         campaign_id, session_id = _effective_mutation_identity(active_storage, session_summary)
@@ -873,6 +1089,15 @@ def mutate_play_transcript(
             regenerated_reply=regenerated.reply,
         )
 
+    if request.delete_entry:
+        _prune_response_variants_to_history(active_storage, mutated_history)
+    elif mutated_history[request.entry_index].role == "assistant" and mutated_history[request.entry_index].variant_group_id:
+        _seed_variant_group_from_entry(
+            active_storage,
+            mutated_history[request.entry_index],
+            content=mutated_history[request.entry_index].content,
+            source="edited",
+        )
     active_storage.save_play_history(mutated_history)
     memory_sections = _rebuild_transcript_memory(active_storage, storage, session_summary)
     session_summary = _touch_transcript_container(active_storage, session_summary, request.session_title)
@@ -890,6 +1115,91 @@ def mutate_play_transcript(
     )
 
 
+def _resolve_response_variant_storage(
+    request: ResponseVariantSwitchRequest,
+    storage: CampaignStorage,
+) -> tuple[CampaignStorage, PlaySessionSummary | None]:
+    if request.session_id:
+        active_storage = storage.resolve_session_storage(request.session_id, request.campaign_id)
+        return active_storage, active_storage.load_session_summary()
+    if request.campaign_id:
+        campaign_storage = storage.for_campaign(request.campaign_id)
+        if not campaign_storage.has_bundle():
+            raise ValueError(f"Campaign {request.campaign_id!r} does not exist.")
+        return campaign_storage, None
+    return storage, storage.load_session_summary() if storage.session_metadata_path.exists() else None
+
+
+def switch_response_variant(
+    request: ResponseVariantSwitchRequest,
+    storage: CampaignStorage,
+) -> ResponseVariantSwitchResponse:
+    active_storage, session_summary = _resolve_response_variant_storage(request, storage)
+    history = active_storage.load_play_history()
+    if request.entry_index >= len(history):
+        raise ValueError(f"Transcript entry index {request.entry_index} does not exist.")
+
+    entry = history[request.entry_index]
+    if entry.role != "assistant":
+        raise ValueError("Only GM response entries can have response variants.")
+
+    group_id = entry.variant_group_id or _variant_group_id(entry.turn)
+    response_variants = active_storage.load_response_variants()
+    group = response_variants.groups.get(group_id)
+    if group is None or len(group.variants) < 2:
+        raise ValueError("This response does not have alternate variants.")
+
+    active_index = _active_variant_index(group) - 1
+    target_index: int | None = None
+    if request.variant_id:
+        target_index = next(
+            (index for index, variant in enumerate(group.variants) if variant.variant_id == request.variant_id),
+            None,
+        )
+        if target_index is None:
+            raise ValueError(f"Response variant {request.variant_id!r} does not exist.")
+    elif request.direction == "previous":
+        target_index = (active_index - 1) % len(group.variants)
+    elif request.direction == "next":
+        target_index = (active_index + 1) % len(group.variants)
+    else:
+        raise ValueError("Provide either variant_id or direction.")
+
+    target_variant = group.variants[target_index]
+    group.active_variant_id = target_variant.variant_id
+    response_variants.groups[group.group_id] = group
+    active_storage.save_response_variants(response_variants)
+
+    history[request.entry_index] = _entry_with_variant_metadata(entry, group)
+    trimmed_history = [history_entry for history_entry in history if history_entry.turn <= group.turn]
+    active_storage.save_play_history(trimmed_history)
+
+    if target_variant.bundle_snapshot is not None:
+        bundle = model_validate(CampaignBundle, target_variant.bundle_snapshot)
+        active_storage.save_bundle(bundle)
+        active_storage.save_turn_snapshot(group.turn, bundle)
+    else:
+        _restore_bundle_to_history(active_storage, trimmed_history)
+    active_storage.delete_turn_snapshots_after(group.turn)
+    _prune_response_variants_after_turn(active_storage, group.turn)
+
+    memory_sections = _rebuild_transcript_memory(active_storage, storage, session_summary)
+    session_summary = _touch_transcript_container(active_storage, session_summary, request.session_title)
+    campaign_id, session_id = _effective_mutation_identity(active_storage, session_summary)
+    return ResponseVariantSwitchResponse(
+        campaign_id=campaign_id,
+        session_id=session_id,
+        turn=group.turn,
+        entry_index=request.entry_index,
+        variant_group_id=group.group_id,
+        variant_id=target_variant.variant_id,
+        variant_index=target_index + 1,
+        variant_count=len(group.variants),
+        content=target_variant.content,
+        memory_sections_indexed=memory_sections,
+    )
+
+
 def generate_local_play_response(
     request: LocalPlayRequest,
     storage: CampaignStorage,
@@ -901,6 +1211,8 @@ def generate_local_play_response(
 
     active_storage, session_summary = resolve_play_storage(request, storage)
     bundle = active_storage.load_bundle()
+    if request.persist_transcript:
+        active_storage.save_turn_snapshot(bundle.world_state.turn, bundle)
     history_limit = request.max_history_turns * 2 if request.max_history_turns else 0
     history = active_storage.load_play_history(limit=history_limit) if history_limit else []
     runtime_settings = _resolve_runtime_settings(active_storage, storage, session_summary)
@@ -984,6 +1296,7 @@ def generate_local_play_response(
             _advance_director_thread_from_reply(bundle, reply, next_turn=next_turn)
         bundle.world_state.turn = next_turn
         active_storage.save_bundle(bundle)
+        active_storage.save_turn_snapshot(next_turn, bundle)
 
         from backend.app.models.transcript_memory import TranscriptMemoryBuildRequest
         from backend.app.services.transcript_memory import build_transcript_memory_index
