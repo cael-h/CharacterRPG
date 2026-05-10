@@ -2,11 +2,13 @@
 set -eu
 
 APP_DIR="${CHARACTERRPG_HOME:-/data/data/com.termux/files/home/projects/CharacterRPG}"
+export PATH="/data/data/com.termux/files/usr/bin:/data/data/com.termux/files/usr/bin/applets:${PATH:-}"
 BACKEND_HOST="${CHARACTERRPG_BACKEND_HOST:-127.0.0.1}"
 BACKEND_PORT="${CHARACTERRPG_BACKEND_PORT:-4100}"
 FRONTEND_HOST="${CHARACTERRPG_FRONTEND_HOST:-127.0.0.1}"
 FRONTEND_PORT="${CHARACTERRPG_FRONTEND_PORT:-5173}"
 FRONTEND_MODE="${CHARACTERRPG_FRONTEND_MODE:-preview}"
+OPEN_BROWSER="${CHARACTERRPG_OPEN_BROWSER:-1}"
 BACKEND_URL="http://${BACKEND_HOST}:${BACKEND_PORT}"
 FRONTEND_URL="http://${FRONTEND_HOST}:${FRONTEND_PORT}"
 LOG_FILE="${APP_DIR}/.runtime/android-launcher.log"
@@ -61,11 +63,11 @@ start_backend() {
   fi
 
   log "starting backend at ${BACKEND_URL}"
-  setsid .venv/bin/python -m uvicorn backend.app.main:app \
+  setsid -f .venv/bin/python -m uvicorn backend.app.main:app \
     --host "$BACKEND_HOST" \
     --port "$BACKEND_PORT" \
-    > .runtime/backend.log 2>&1 < /dev/null &
-  echo "$!" > .runtime/backend.pid
+    > .runtime/backend.log 2>&1 < /dev/null
+  pgrep -f "uvicorn backend.app.main:app --host ${BACKEND_HOST} --port ${BACKEND_PORT}" | head -1 > .runtime/backend.pid || true
 }
 
 ensure_frontend_build() {
@@ -100,13 +102,14 @@ start_frontend() {
   ensure_frontend_build
   cd web
   if [ "$FRONTEND_MODE" = "preview" ]; then
-    setsid ./node_modules/.bin/vite preview --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" \
-      > ../.runtime/frontend.log 2>&1 < /dev/null &
+    setsid -f node ./node_modules/vite/bin/vite.js preview --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" \
+      > ../.runtime/frontend.log 2>&1 < /dev/null
+    pgrep -f "vite/bin/vite.js preview --host ${FRONTEND_HOST} --port ${FRONTEND_PORT}" | head -1 > ../.runtime/frontend.pid || true
   else
-    setsid npm run dev -- --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" \
-      > ../.runtime/frontend.log 2>&1 < /dev/null &
+    setsid -f npm run dev -- --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" \
+      > ../.runtime/frontend.log 2>&1 < /dev/null
+    pgrep -f "vite .*--host ${FRONTEND_HOST} --port ${FRONTEND_PORT}" | head -1 > ../.runtime/frontend.pid || true
   fi
-  echo "$!" > ../.runtime/frontend.pid
   cd ..
 }
 
@@ -124,6 +127,11 @@ if ! wait_for_url "$FRONTEND_URL" 30; then
 fi
 
 log "opening ${FRONTEND_URL}"
+if [ "$OPEN_BROWSER" = "0" ]; then
+  log "browser launch skipped"
+  exit 0
+fi
+
 if command -v am >/dev/null 2>&1; then
   if am start -a android.intent.action.VIEW -d "$FRONTEND_URL" >> "$LOG_FILE" 2>&1; then
     log "opened url with am"
